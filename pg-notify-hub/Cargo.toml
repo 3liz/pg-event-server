@@ -1,0 +1,21 @@
+[package]
+name = "pg-notify-hub"
+version = "0.1.0"
+edition = "2021"
+description = "Postgres NOTIFY/SSE hub"
+
+[dependencies]
+tokio-postgres = "0.7"
+tokio-stream = "0.1"
+actix-web = { version = "4", features = ["rustls"] }
+actix-web-lab = "0.19"
+log = "0.4"
+env_logger = "0.10"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.7"
+thiserror = "1.0"
+lazy_static = "1"
+futures = "0.3"
+uuid = { version = "1.3", features = ["v4", "fast-rng"] }

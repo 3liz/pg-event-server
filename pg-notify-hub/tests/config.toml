@@ -1,0 +1,4 @@
+[server]
+title = "Test server"
+confdir = "./tests/resources"
+listen = "127.0.0.1:8888"
