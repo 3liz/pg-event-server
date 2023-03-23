@@ -8,14 +8,14 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
+use std::rc::Rc;
 
 use serde::Deserialize;
 
-use crate::Result;
-use actix_web::{http::header::HeaderValue, rt, web, HttpRequest, Responder};
+use crate::{Result, Event};
+use actix_web::{http::header::HeaderValue, rt, web, HttpRequest, HttpResponse, Responder};
 use actix_web_lab::sse;
 use futures::{future, FutureExt};
-use uuid::Uuid;
 
 use log;
 
@@ -33,9 +33,28 @@ pub struct Broadcaster {
     subs: Subscriptions,
 }
 
+// Handlers
 impl Broadcaster {
-    /// Crate from configuration
-    pub fn from_config(conf: &BroadcastConfig) -> Self {
+
+    /// Subscrible handler
+    pub async fn do_subscribe(req: HttpRequest, bc: web::Data<Rc<Self>>) -> Result<impl Responder> {
+        let id: String = req.match_info().query("id").into();
+        let ident: String = req
+            .headers()
+            .get("X-Identity")
+            .unwrap_or(&HeaderValue::from_static("<anonymous>"))
+            .to_str()
+            .unwrap()
+            .into();
+        log::info!("REGISTER({id},{ident})");
+        bc.new_channel(id, ident).await
+    }
+}
+
+
+impl Broadcaster {
+    /// Crate new Broadcaster
+    pub fn new(conf: &BroadcastConfig) -> Self {
         Self {
             buffer_size: conf.buffer_size,
             subs: Subscriptions::default(),
@@ -81,15 +100,15 @@ impl Broadcaster {
     }
 
     /// Broadcast event to all listener of the subscription `id`
-    pub async fn broadcast(&self, id: &str, event: &str, msg: &str) {
-        let uuid = Uuid::new_v4().to_string();
+    pub async fn broadcast(&self, id: &str, event: &str, msg: &str, uuid: &str) {
 
         log::info!("BROADCAST({id},{event}) : {uuid}");
 
         if let Some(pool) = self.subs.borrow().get(id) {
             let res = future::join_all(pool.iter().map(|chan| {
+                log::info!("SEND({uuid})");
                 chan.sender
-                    .send(sse::Data::new(msg).id(uuid.as_ref()).event(event))
+                    .send(sse::Data::new(msg).id(uuid).event(event))
                     .then(|result| {
                         let ident: &str = &chan.ident;
                         async move { (ident, result.is_ok()) }
@@ -97,20 +116,6 @@ impl Broadcaster {
             }))
             .await;
         }
-    }
-
-    /// Handler
-    pub async fn handler(req: HttpRequest, bc: web::Data<Broadcaster>) -> Result<impl Responder> {
-        let id: String = req.match_info().query("id").parse().unwrap();
-        let ident: String = req
-            .headers()
-            .get("X-Identity")
-            .unwrap_or(&HeaderValue::from_static(""))
-            .to_str()
-            .unwrap()
-            .into();
-        log::info!("REGISTER({id},{ident})");
-        bc.new_channel(id, "".into()).await
     }
 
     /// Default buffer size value

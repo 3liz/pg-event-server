@@ -6,9 +6,9 @@ description = "Postgres NOTIFY/SSE hub"
 
 [dependencies]
 tokio-postgres = "0.7"
-tokio-stream = "0.1"
 actix-web = { version = "4", features = ["rustls"] }
 actix-web-lab = "0.19"
+tokio = "1"
 log = "0.4"
 env_logger = "0.10"
 clap = { version = "4", features = ["derive"] }

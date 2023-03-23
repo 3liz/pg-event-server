@@ -1,0 +1,14 @@
+[package]
+name = "pg-config"
+version = "0.1.0"
+edition = "2021"
+authors = ["David Marteau <dmarteau@3liz.com>"]
+description = "Parse Postgres service configuration files and more"
+readme = "Readme.md"
+keywords = [ "database", "sql", "postgres", "postgresql" ]
+
+[dependencies]
+thiserror = "1.0"
+rust-ini = "0.18"
+tokio-postgres = "0.7"
+
