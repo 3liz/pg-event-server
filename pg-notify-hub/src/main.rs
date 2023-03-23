@@ -20,9 +20,9 @@ mod services;
 use services::subscribe::Broadcaster;
 
 use errors::{Error, Result};
+use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
-use std::cell::RefCell;
 use std::time::Duration;
 
 use clap::Parser;
@@ -47,31 +47,39 @@ struct Event {
     msg: String,
 }
 
-use tokio::sync::watch::{self, Sender, Receiver};
-
-fn broadcast_events(tx: Sender<Event>) {
+//
+// Define 1 to N communication channel
+//
+// The dispatcher will run in the main thread.
+// Each worker will run a listener that will
+// send the event on each SSE subsriber channel.
+//
+use tokio::sync::watch::{self, Receiver, Sender};
+//
+// Event dispatcher 
+//
+fn start_event_dispatcher(tx: Sender<Event>) {
     use uuid::Uuid;
     actix_web::rt::spawn(async move {
-        loop {      
+        loop {
             actix_web::rt::time::sleep(Duration::from_secs(3)).await;
             let uuid = Uuid::new_v4().to_string();
-            tx.send(Event { 
-                id: uuid, 
-                event: "foo".into(), 
-                msg: "Hello world".into(), 
+            tx.send(Event {
+                id: uuid,
+                event: "foo".into(),
+                msg: "Hello world".into(),
             });
         }
     });
 }
-
-// Start listening to incoming events and broadcast 
-// it 
-fn listen_for_events(bc: Rc<Broadcaster>, mut rx: Receiver<Event>) {
+//
+// Event listener
+//
+fn start_event_listener(bc: Rc<Broadcaster>, mut rx: Receiver<Event>) {
     actix_web::rt::spawn(async move {
         log::info!("Event listener started");
         while rx.changed().await.is_ok() {
             let ev = rx.borrow();
-            log::info!("EVENT({}) CHANGED", ev.id);
             bc.broadcast("test", &ev.event, &ev.msg, &ev.id).await;
         }
     });
@@ -86,22 +94,19 @@ async fn main() -> Result<()> {
 
     let args = Cli::parse();
 
-    let conf = config::read_config(&Path::new(&args.config))?;
+    let conf = config::read_config(Path::new(&args.config))?;
     init_logger(args.verbose);
 
-    let listen = conf.server.listen.clone();
-
-    eprintln!("Starting subscription server on: {listen}");
+    eprintln!("Starting pg event server on: {}", conf.server.listen);
 
     let (tx, rx) = watch::channel(Event::default());
-    
-    broadcast_events(tx);
+
+    start_event_dispatcher(tx);
 
     HttpServer::new(move || {
-
         let broadcaster = Rc::new(Broadcaster::new(&conf.broadcast));
 
-        listen_for_events(broadcaster.clone(), rx.clone());     
+        start_event_listener(broadcaster.clone(), rx.clone());
 
         let app = App::new()
             .wrap(Logger::default())
@@ -112,14 +117,13 @@ async fn main() -> Result<()> {
             )
             .service(
                 web::scope("/events")
-                    .app_data(web::Data::new(broadcaster.clone()))
-                    .route("/subscribe/{id}", web::get().to(Broadcaster::do_subscribe))
-                    //.route("/notify/{id}/{event}", web::post().to(Broadcaster::do_notify)),
+                    .app_data(web::Data::new(broadcaster))
+                    .route("/subscribe/{id}", web::get().to(Broadcaster::do_subscribe)),
             );
 
         app
     })
-    .bind(listen)?
+    .bind(&conf.server.listen)?
     .run()
     .await
     .map_err(Error::from)

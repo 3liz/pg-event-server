@@ -7,12 +7,12 @@
 //!
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::time::{Duration, SystemTime};
 use std::rc::Rc;
+use std::time::{Duration, SystemTime};
 
 use serde::Deserialize;
 
-use crate::{Result, Event};
+use crate::{Result};
 use actix_web::{http::header::HeaderValue, rt, web, HttpRequest, HttpResponse, Responder};
 use actix_web_lab::sse;
 use futures::{future, FutureExt};
@@ -35,7 +35,6 @@ pub struct Broadcaster {
 
 // Handlers
 impl Broadcaster {
-
     /// Subscrible handler
     pub async fn do_subscribe(req: HttpRequest, bc: web::Data<Rc<Self>>) -> Result<impl Responder> {
         let id: String = req.match_info().query("id").into();
@@ -50,7 +49,6 @@ impl Broadcaster {
         bc.new_channel(id, ident).await
     }
 }
-
 
 impl Broadcaster {
     /// Crate new Broadcaster
@@ -76,16 +74,16 @@ impl Broadcaster {
         // Add channel to pool
         loop {
             // We cannot be sure that the
-            // the collection is not actually borrowed 
+            // the collection is not actually borrowed
             // while broadcasting, prevent panicking
-            // by testing borrowness and eventually 
+            // by testing borrowness and eventually
             // wait a little bit
             match self.subs.try_borrow_mut() {
                 Ok(mut subs) => {
                     match subs.get_mut(&id) {
                         Some(pool) => pool.push(chan),
                         None => {
-                            subs.insert(id.into(), vec![chan]);
+                            subs.insert(id, vec![chan]);
                         }
                     }
                     break;
@@ -101,12 +99,10 @@ impl Broadcaster {
 
     /// Broadcast event to all listener of the subscription `id`
     pub async fn broadcast(&self, id: &str, event: &str, msg: &str, uuid: &str) {
-
         log::info!("BROADCAST({id},{event}) : {uuid}");
 
         if let Some(pool) = self.subs.borrow().get(id) {
             let res = future::join_all(pool.iter().map(|chan| {
-                log::info!("SEND({uuid})");
                 chan.sender
                     .send(sse::Data::new(msg).id(uuid).event(event))
                     .then(|result| {

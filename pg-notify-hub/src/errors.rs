@@ -6,11 +6,11 @@
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("IO Error")]
-    IOError(#[from] std::io::Error),
+    IO(#[from] std::io::Error),
     #[error("Configuration Error")]
-    ConfigError(#[from] toml::de::Error),
+    Config(#[from] toml::de::Error),
     #[error("SystemTime error")]
-    SystemTimeError(#[from] std::time::SystemTimeError),
+    SystemTime(#[from] std::time::SystemTimeError),
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
