@@ -1104,7 +1104,9 @@ dependencies = [
 name = "pg-event-listener"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "futures",
+ "pg-config",
  "thiserror",
  "tokio",
  "tokio-postgres",

@@ -71,8 +71,8 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 /// initializing [`Config`]
 ///
 /// If the connection string do no start with `service=` the connection
-/// string directly passed to [`Config`] along with parameters
-/// defined for any service defined in `PGSERVICE.
+/// string is directly passed to [`Config`] along with parameters
+/// defined for any service defined in `PGSERVICE`.
 ///
 /// If the connection string is None the [`Config`] is initialized
 /// from environment variables and/or service defined in `PGSERVICE`.
