@@ -15,12 +15,11 @@ use log::LevelFilter;
 mod config;
 mod errors;
 mod landingpage;
-mod services;
+mod subscribe;
 
-use services::subscribe::Broadcaster;
+use subscribe::Broadcaster;
 
 use errors::{Error, Result};
-use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
@@ -56,7 +55,7 @@ struct Event {
 //
 use tokio::sync::watch::{self, Receiver, Sender};
 //
-// Event dispatcher 
+// Event dispatcher
 //
 fn start_event_dispatcher(tx: Sender<Event>) {
     use uuid::Uuid;
@@ -143,3 +142,6 @@ fn init_logger(verbose: bool) {
     }
     builder.init();
 }
+
+#[cfg(test)]
+mod tests;

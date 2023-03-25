@@ -8,9 +8,11 @@ pub enum Error {
     #[error("IO Error")]
     IO(#[from] std::io::Error),
     #[error("Configuration Error")]
-    Config(#[from] toml::de::Error),
+    ConfigFormat(#[from] toml::de::Error),
     #[error("SystemTime error")]
     SystemTime(#[from] std::time::SystemTimeError),
+    #[error("Config error")]
+    Config(String),
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;

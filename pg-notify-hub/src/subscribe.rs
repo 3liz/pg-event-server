@@ -10,14 +10,10 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::{Duration, SystemTime};
 
-use serde::Deserialize;
-
-use crate::{Result};
-use actix_web::{http::header::HeaderValue, rt, web, HttpRequest, HttpResponse, Responder};
+use crate::{config::BroadcastConfig, Result};
+use actix_web::{http::header::HeaderValue, rt, web, HttpRequest, Responder};
 use actix_web_lab::sse;
 use futures::{future, FutureExt};
-
-use log;
 
 type ChanPool = Vec<Channel>;
 type Subscriptions = RefCell<HashMap<String, ChanPool>>;
@@ -111,29 +107,6 @@ impl Broadcaster {
                     })
             }))
             .await;
-        }
-    }
-
-    /// Default buffer size value
-    const fn default_buffer_size() -> usize {
-        10
-    }
-}
-
-/// Broadcast configuration
-#[derive(Debug, Clone, Deserialize)]
-pub struct BroadcastConfig {
-    /// Size of buffer for pending responses     
-    #[serde(default = "Broadcaster::default_buffer_size")]
-    pub buffer_size: usize,
-}
-
-impl BroadcastConfig {}
-
-impl Default for BroadcastConfig {
-    fn default() -> Self {
-        Self {
-            buffer_size: Broadcaster::default_buffer_size(),
         }
     }
 }

@@ -747,6 +747,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "glob"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
+
+[[package]]
 name = "h2"
 version = "0.3.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1105,7 +1111,9 @@ name = "pg-event-listener"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "env_logger",
  "futures",
+ "log",
  "pg-config",
  "thiserror",
  "tokio",
@@ -1121,8 +1129,10 @@ dependencies = [
  "clap",
  "env_logger",
  "futures",
+ "glob",
  "lazy_static",
  "log",
+ "pg-event-listener",
  "serde",
  "serde_json",
  "thiserror",

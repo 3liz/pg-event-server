@@ -1,0 +1,11 @@
+
+[[channel]]
+id = "path/to/local"
+allowed_events = ["foo", "bar", "baz"]
+connection_string = "service=local"
+
+[[channel]]
+id = "other/channel"
+allowed_events = ["hello", "bar"]
+connection_string = "service=workshop_local"
+
