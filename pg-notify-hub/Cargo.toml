@@ -6,6 +6,7 @@ description = "Postgres NOTIFY/SSE hub"
 
 [dependencies]
 pg-event-listener = { path = "../pg-event-listener" }
+pg-config = { path = "../pg-config" }
 tokio-postgres = "0.7"
 actix-web = { version = "4", features = ["rustls"] }
 actix-web-lab = "0.19"

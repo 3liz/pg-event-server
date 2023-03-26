@@ -2,10 +2,8 @@
 //! Listen asynchronously to Postgres events.
 //!
 mod dispatcher;
-mod pool;
 
 pub use dispatcher::PgEventDispatcher;
-pub use pool::PgEventDispatcherPool;
 
 pub type Error = tokio_postgres::error::Error;
 pub type Result<T, E = Error> = std::result::Result<T, E>;

@@ -1,6 +1,6 @@
 
 [[channel]]
-id = "path/to/local"
+id = "test"
 allowed_events = ["foo", "bar", "baz"]
 connection_string = "service=local"
 

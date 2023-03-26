@@ -1132,6 +1132,7 @@ dependencies = [
  "glob",
  "lazy_static",
  "log",
+ "pg-config",
  "pg-event-listener",
  "serde",
  "serde_json",

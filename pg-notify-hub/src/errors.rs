@@ -13,8 +13,29 @@ pub enum Error {
     SystemTime(#[from] std::time::SystemTimeError),
     #[error("Config error")]
     Config(String),
+    #[error("Postgres connection error")]
+    PostgresConnection(#[from] pg_config::Error),
+    #[error("Postgres error")]
+    PostgresError(#[from] pg_event_listener::Error),
+    #[error("Subscription do not exists")]
+    SubscriptionNotFound,
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-impl actix_web::ResponseError for Error {}
+use actix_web::http::{header::ContentType, StatusCode};
+use actix_web::HttpResponse;
+
+impl actix_web::ResponseError for Error {
+    fn error_response(&self) -> HttpResponse {
+        HttpResponse::build(self.status_code())
+            .insert_header(ContentType::json())
+            .finish()
+    }
+    fn status_code(&self) -> StatusCode {
+        match *self {
+            Error::SubscriptionNotFound => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}

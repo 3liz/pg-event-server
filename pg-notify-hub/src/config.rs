@@ -18,6 +18,15 @@ use crate::errors::{Error, Result};
 fn default_title() -> String {
     "Event Subscriber Service".into()
 }
+
+const fn default_worker_buffer_size() -> usize {
+    10
+}
+
+const fn default_events_buffer_size() -> usize {
+    1024
+}
+
 ///
 /// Server global configuration
 ///
@@ -32,31 +41,22 @@ pub struct Server {
 }
 
 ///
-/// Broadcast configuration
-///
-#[derive(Debug, Clone, Deserialize)]
-pub struct BroadcastConfig {
-    /// Size of buffer for pending responses     
-    pub buffer_size: usize,
-}
-
-impl Default for BroadcastConfig {
-    fn default() -> Self {
-        Self { buffer_size: 10 }
-    }
-}
-
-///
 /// General Configuration
 ///
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     /// Global server configuration
     pub server: Server,
-    #[serde(default)]
-    pub broadcast: BroadcastConfig,
     #[serde(default, rename(deserialize = "channel"))]
     pub channels: Vec<ChannelConfig>,
+
+    /// worker buffer size
+    #[serde(default = "default_worker_buffer_size")]
+    pub worker_buffer_size: usize,
+
+    /// events buffer size
+    #[serde(default = "default_events_buffer_size")]
+    pub events_buffer_size: usize
 }
 
 ///
@@ -71,6 +71,12 @@ pub struct ChannelConfig {
     pub allowed_events: Vec<String>,
     /// Connection string
     pub connection_string: String,
+}
+
+impl ChannelConfig {
+    pub fn sanitize(&mut self) {
+        self.id = self.id.trim_start_matches('/').into();
+    }
 }
 
 ///
@@ -120,6 +126,11 @@ impl Config {
             }
         }
         Ok(conf)
+    }
+
+    /// Return the list of subscripitons
+    pub fn subscriptions(&self) -> impl Iterator<Item=&str> {
+        self.channels.iter().map(|c| c.id.as_ref())
     }
 }
 

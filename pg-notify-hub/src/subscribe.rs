@@ -6,19 +6,21 @@
 //!
 //!
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::time::{Duration, SystemTime};
 
-use crate::{config::BroadcastConfig, Result};
 use actix_web::{http::header::HeaderValue, rt, web, HttpRequest, Responder};
 use actix_web_lab::sse;
 use futures::{future, FutureExt};
+
+use crate::{events::Event, Error, Result};
 
 type ChanPool = Vec<Channel>;
 type Subscriptions = RefCell<HashMap<String, ChanPool>>;
 
 struct Channel {
+    id: String,
     ident: String,
     sender: sse::Sender,
     timestamp: u64,
@@ -27,13 +29,20 @@ struct Channel {
 pub struct Broadcaster {
     buffer_size: usize,
     subs: Subscriptions,
+    allowed_subscriptions: HashSet<String>
 }
 
 // Handlers
 impl Broadcaster {
     /// Subscrible handler
     pub async fn do_subscribe(req: HttpRequest, bc: web::Data<Rc<Self>>) -> Result<impl Responder> {
+        
         let id: String = req.match_info().query("id").into();
+        
+        if !bc.allowed_subscriptions.contains(&id) {
+            return Err(Error::SubscriptionNotFound);
+        }
+
         let ident: String = req
             .headers()
             .get("X-Identity")
@@ -48,10 +57,11 @@ impl Broadcaster {
 
 impl Broadcaster {
     /// Crate new Broadcaster
-    pub fn new(conf: &BroadcastConfig) -> Self {
+    pub fn new(buffer_size: usize, allowed_subscriptions: HashSet<String>) -> Self {
         Self {
-            buffer_size: conf.buffer_size,
+            buffer_size,
             subs: Subscriptions::default(),
+            allowed_subscriptions,
         }
     }
 
@@ -60,6 +70,7 @@ impl Broadcaster {
         let (tx, rx) = sse::channel(self.buffer_size);
 
         let chan = Channel {
+            id,
             ident,
             sender: tx,
             timestamp: SystemTime::now()
@@ -76,10 +87,10 @@ impl Broadcaster {
             // wait a little bit
             match self.subs.try_borrow_mut() {
                 Ok(mut subs) => {
-                    match subs.get_mut(&id) {
+                    match subs.get_mut(&chan.id) {
                         Some(pool) => pool.push(chan),
                         None => {
-                            subs.insert(id, vec![chan]);
+                            subs.insert(chan.id.clone(), vec![chan]);
                         }
                     }
                     break;
@@ -94,19 +105,42 @@ impl Broadcaster {
     }
 
     /// Broadcast event to all listener of the subscription `id`
-    pub async fn broadcast(&self, id: &str, event: &str, msg: &str, uuid: &str) {
-        log::info!("BROADCAST({id},{event}) : {uuid}");
-
-        if let Some(pool) = self.subs.borrow().get(id) {
-            let res = future::join_all(pool.iter().map(|chan| {
-                chan.sender
-                    .send(sse::Data::new(msg).id(uuid).event(event))
-                    .then(|result| {
-                        let ident: &str = &chan.ident;
-                        async move { (ident, result.is_ok()) }
-                    })
-            }))
-            .await;
-        }
+    #[allow(clippy::await_holding_refcell_ref)]
+    pub async fn broadcast(&self, event: &Event) {
+        // We hold the borrow accross the await call
+        // this may lead to potential problem because
+        // we can do a mutable borrow during the execution
+        // of the futures.
+        //
+        // This should be ok as long as in every other place where we
+        // perform a mutable borrow we use the `try_borrow_mut()`
+        // method to ensure availability.
+        let subs = self.subs.borrow();
+        let res = future::join_all(
+            event
+                .channels()
+                .filter_map(|channel| subs.get(channel))
+                .flat_map(|pool| pool.iter())
+                .map(|chan| {
+                    log::info!(
+                        "SEND({},{}) {}: {}",
+                        chan.id,
+                        event.session_pid(),
+                        event.event(),
+                        event.id()
+                    );
+                    chan.sender
+                        .send(
+                            sse::Data::new(event.payload())
+                                .id(event.id())
+                                .event(event.event()),
+                        )
+                        .then(|result| {
+                            let ident: &str = &chan.ident;
+                            async move { (ident, result.is_ok()) }
+                        })
+                }),
+        )
+        .await;
     }
 }

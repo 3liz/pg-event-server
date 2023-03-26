@@ -14,6 +14,7 @@ use log::LevelFilter;
 
 mod config;
 mod errors;
+mod events;
 mod landingpage;
 mod subscribe;
 
@@ -22,9 +23,9 @@ use subscribe::Broadcaster;
 use errors::{Error, Result};
 use std::path::Path;
 use std::rc::Rc;
-use std::time::Duration;
+use std::collections::HashSet;
 
-use clap::Parser;
+use clap::{ArgAction, Parser};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -33,17 +34,8 @@ struct Cli {
     /// Path to configuration file
     #[arg(long)]
     config: String,
-    #[arg(short, long)]
-    verbose: bool,
-}
-
-/// Event broadcasted to
-/// All workers
-#[derive(Default, Debug, Clone)]
-struct Event {
-    id: String,
-    event: String,
-    msg: String,
+    #[arg(short, long, action = ArgAction::Count)]
+    verbose: u8,
 }
 
 //
@@ -53,33 +45,38 @@ struct Event {
 // Each worker will run a listener that will
 // send the event on each SSE subsriber channel.
 //
+use events::{Event, EventDispatch};
 use tokio::sync::watch::{self, Receiver, Sender};
 //
 // Event dispatcher
 //
-fn start_event_dispatcher(tx: Sender<Event>) {
-    use uuid::Uuid;
+async fn start_event_dispatcher(tx: Sender<Event>, conf: config::Config) -> Result<()> {
+    let mut dispatcher = EventDispatch::new(conf.events_buffer_size);
+    // Load channel configuration
+    dispatcher.listen_from(conf.channels.into_iter()).await?;
+    // Start dispatching
     actix_web::rt::spawn(async move {
-        loop {
-            actix_web::rt::time::sleep(Duration::from_secs(3)).await;
-            let uuid = Uuid::new_v4().to_string();
-            tx.send(Event {
-                id: uuid,
-                event: "foo".into(),
-                msg: "Hello world".into(),
-            });
-        }
+        dispatcher
+            .dispatch(|event| {
+                if let Err(err) = tx.send(event) {
+                    log::error!("Dispatch error: {err:?}");
+                }
+            })
+            .await;
     });
+    Ok(())
 }
 //
-// Event listener
+// Worker event listener
+//
+// Each worker will listen to the incoming events
+// and will publish it to subscription channels.
 //
 fn start_event_listener(bc: Rc<Broadcaster>, mut rx: Receiver<Event>) {
     actix_web::rt::spawn(async move {
-        log::info!("Event listener started");
         while rx.changed().await.is_ok() {
             let ev = rx.borrow();
-            bc.broadcast("test", &ev.event, &ev.msg, &ev.id).await;
+            bc.broadcast(&ev).await;
         }
     });
 }
@@ -93,17 +90,26 @@ async fn main() -> Result<()> {
 
     let args = Cli::parse();
 
-    let conf = config::read_config(Path::new(&args.config))?;
+    let mut conf = config::read_config(Path::new(&args.config))?;
+
     init_logger(args.verbose);
 
-    eprintln!("Starting pg event server on: {}", conf.server.listen);
+    let bind_address = conf.server.listen.clone();
+    let worker_buffer_size = conf.worker_buffer_size;
+    let allowed_subscriptions: HashSet<_> = conf.subscriptions().map(|s| s.into()).collect();
+
+    eprintln!("Starting pg event server on: {}", bind_address);
 
     let (tx, rx) = watch::channel(Event::default());
 
-    start_event_dispatcher(tx);
+    start_event_dispatcher(tx, conf).await?;
 
     HttpServer::new(move || {
-        let broadcaster = Rc::new(Broadcaster::new(&conf.broadcast));
+
+        let broadcaster = Rc::new(Broadcaster::new(
+                worker_buffer_size, 
+                allowed_subscriptions.clone(),
+        ));
 
         start_event_listener(broadcaster.clone(), rx.clone());
 
@@ -117,12 +123,12 @@ async fn main() -> Result<()> {
             .service(
                 web::scope("/events")
                     .app_data(web::Data::new(broadcaster))
-                    .route("/subscribe/{id}", web::get().to(Broadcaster::do_subscribe)),
+                    .route("/subscribe/{id:.*}", web::get().to(Broadcaster::do_subscribe)),
             );
 
         app
     })
-    .bind(&conf.server.listen)?
+    .bind(&bind_address)?
     .run()
     .await
     .map_err(Error::from)
@@ -131,16 +137,17 @@ async fn main() -> Result<()> {
 //
 // Logger
 //
-fn init_logger(verbose: bool) {
+fn init_logger(verbose: u8) {
     use env_logger::Env;
 
     let mut builder = env_logger::Builder::from_env(Env::default().default_filter_or("info"));
 
-    if verbose {
-        builder.filter_level(LevelFilter::Trace);
-        eprintln!("Verbose mode on");
+    match verbose {
+        1 => builder.filter_level(LevelFilter::Debug),
+        _ if verbose > 1 => builder.filter_level(LevelFilter::Trace),
+        _ => &mut builder,
     }
-    builder.init();
+    .init();
 }
 
 #[cfg(test)]
