@@ -21,9 +21,9 @@ mod subscribe;
 use subscribe::Broadcaster;
 
 use errors::{Error, Result};
+use std::collections::HashSet;
 use std::path::Path;
 use std::rc::Rc;
-use std::collections::HashSet;
 
 use clap::{ArgAction, Parser};
 
@@ -90,7 +90,7 @@ async fn main() -> Result<()> {
 
     let args = Cli::parse();
 
-    let mut conf = config::read_config(Path::new(&args.config))?;
+    let conf = config::read_config(Path::new(&args.config))?;
 
     init_logger(args.verbose);
 
@@ -105,10 +105,9 @@ async fn main() -> Result<()> {
     start_event_dispatcher(tx, conf).await?;
 
     HttpServer::new(move || {
-
         let broadcaster = Rc::new(Broadcaster::new(
-                worker_buffer_size, 
-                allowed_subscriptions.clone(),
+            worker_buffer_size,
+            allowed_subscriptions.clone(),
         ));
 
         start_event_listener(broadcaster.clone(), rx.clone());
@@ -123,7 +122,10 @@ async fn main() -> Result<()> {
             .service(
                 web::scope("/events")
                     .app_data(web::Data::new(broadcaster))
-                    .route("/subscribe/{id:.*}", web::get().to(Broadcaster::do_subscribe)),
+                    .route(
+                        "/subscribe/{id:.*}",
+                        web::get().to(Broadcaster::do_subscribe),
+                    ),
             );
 
         app

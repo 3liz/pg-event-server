@@ -20,7 +20,7 @@ fn default_title() -> String {
 }
 
 const fn default_worker_buffer_size() -> usize {
-    10
+    1
 }
 
 const fn default_events_buffer_size() -> usize {
@@ -56,7 +56,7 @@ pub struct Config {
 
     /// events buffer size
     #[serde(default = "default_events_buffer_size")]
-    pub events_buffer_size: usize
+    pub events_buffer_size: usize,
 }
 
 ///
@@ -125,11 +125,16 @@ impl Config {
                 }
             }
         }
+        conf.sanitize();
         Ok(conf)
     }
 
+    fn sanitize(&mut self) {
+        self.channels.iter_mut().for_each(|c| c.sanitize());
+    }
+    
     /// Return the list of subscripitons
-    pub fn subscriptions(&self) -> impl Iterator<Item=&str> {
+    pub fn subscriptions(&self) -> impl Iterator<Item = &str> {
         self.channels.iter().map(|c| c.id.as_ref())
     }
 }

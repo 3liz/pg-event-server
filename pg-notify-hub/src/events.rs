@@ -110,7 +110,7 @@ impl EventDispatch {
     }
 
     /// Return an iterator over Channels
-    pub fn iter_channels(&self) -> impl Iterator<Item=&Channel> {
+    pub fn iter_channels(&self) -> impl Iterator<Item = &Channel> {
         self.channels.iter()
     }
 

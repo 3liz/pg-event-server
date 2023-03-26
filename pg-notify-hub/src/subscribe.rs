@@ -24,21 +24,22 @@ struct Channel {
     ident: String,
     sender: sse::Sender,
     timestamp: u64,
+    realip_remote_addr: Option<String>,
+    peer_addr: Option<String>,
 }
 
 pub struct Broadcaster {
     buffer_size: usize,
     subs: Subscriptions,
-    allowed_subscriptions: HashSet<String>
+    allowed_subscriptions: HashSet<String>,
 }
 
 // Handlers
 impl Broadcaster {
     /// Subscrible handler
     pub async fn do_subscribe(req: HttpRequest, bc: web::Data<Rc<Self>>) -> Result<impl Responder> {
-        
         let id: String = req.match_info().query("id").into();
-        
+
         if !bc.allowed_subscriptions.contains(&id) {
             return Err(Error::SubscriptionNotFound);
         }
@@ -50,8 +51,9 @@ impl Broadcaster {
             .to_str()
             .unwrap()
             .into();
-        log::info!("REGISTER({id},{ident})");
-        bc.new_channel(id, ident).await
+
+        log::info!("SUBSCRIBE({id},{ident})");
+        bc.new_channel(req, id, ident).await
     }
 }
 
@@ -66,8 +68,12 @@ impl Broadcaster {
     }
 
     /// Create a new communication channel and register it
-    pub async fn new_channel(&self, id: String, ident: String) -> Result<impl Responder> {
+    async fn new_channel(&self, req: HttpRequest, id: String, ident: String) -> Result<impl Responder> {
         let (tx, rx) = sse::channel(self.buffer_size);
+
+        let connection_info = req.connection_info();
+        let realip_remote_addr = connection_info.realip_remote_addr().map(String::from);
+        let peer_addr = connection_info.peer_addr().map(String::from);
 
         let chan = Channel {
             id,
@@ -76,6 +82,8 @@ impl Broadcaster {
             timestamp: SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)?
                 .as_secs(),
+            realip_remote_addr,
+            peer_addr,
         };
 
         // Add channel to pool
@@ -122,13 +130,6 @@ impl Broadcaster {
                 .filter_map(|channel| subs.get(channel))
                 .flat_map(|pool| pool.iter())
                 .map(|chan| {
-                    log::info!(
-                        "SEND({},{}) {}: {}",
-                        chan.id,
-                        event.session_pid(),
-                        event.event(),
-                        event.id()
-                    );
                     chan.sender
                         .send(
                             sse::Data::new(event.payload())
@@ -137,7 +138,19 @@ impl Broadcaster {
                         )
                         .then(|result| {
                             let ident: &str = &chan.ident;
-                            async move { (ident, result.is_ok()) }
+                            let ok = result.is_ok();
+                            if !ok {
+                                log::debug!("Connection closed for {ident}"); 
+                            } else {
+                                log::debug!(
+                                    "SEND({},{}) {}: {}",
+                                    chan.id,
+                                    event.session_pid(),
+                                    event.event(),
+                                    event.id()
+                                );
+                            }
+                            async move { (ident, ok) }
                         })
                 }),
         )
