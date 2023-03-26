@@ -11,15 +11,41 @@ use crate::{Config, Error, Notification, Result};
 ///
 /// A pg event listener hold a connection to a database
 /// and listen to event
+///
+/// A dispatcher is created with a `dispatch_id` that will
+/// be associated will all sent messages
 pub struct PgEventDispatcher {
     client: Client,
     config: Config,
     session_pid: i32,
+    dispatch_id: i32,
+}
+
+#[derive(Debug, Clone)]
+pub struct PgNotificationDispatch {
+    notification: Notification,
+    dispatch_id: i32,
+}
+
+impl PgNotificationDispatch {
+    pub fn notification(&self) -> &Notification {
+        &self.notification
+    }
+    pub fn dispatch_id(&self) -> i32 {
+        self.dispatch_id
+    }
+    pub fn take_notification(self) -> Notification {
+        self.notification
+    }
 }
 
 impl PgEventDispatcher {
     /// Initialize a `PgEventDispatcher`
-    pub async fn connect(config: Config, tx: mpsc::Sender<Notification>) -> Result<Self> {
+    pub async fn connect(
+        config: Config, 
+        tx: mpsc::Sender<PgNotificationDispatch>,
+        dispatch_id: i32,
+    ) -> Result<Self> {
         let (client, mut conn) = config.connect(NoTls).await?;
 
         // Create a stream from connection polling
@@ -36,7 +62,12 @@ impl PgEventDispatcher {
                     match msg {
                         Ok(msg) => match msg {
                             AsyncMessage::Notification(n) => {
-                                if let Err(error) = tx.send(n).await {
+                                if let Err(error) = tx.send(
+                                        PgNotificationDispatch {
+                                            notification: n,
+                                            dispatch_id,
+                                        }
+                                    ).await {
                                     log::error!("{:?}", error);
                                     break;
                                 }
@@ -64,6 +95,7 @@ impl PgEventDispatcher {
             client,
             config,
             session_pid,
+            dispatch_id,
         })
     }
 
@@ -84,9 +116,9 @@ impl PgEventDispatcher {
     }
 
     /// Reconnect listener with its config
-    pub async fn respawn(&mut self, tx: mpsc::Sender<Notification>) -> Result<()> {
+    pub async fn respawn(&mut self, tx: mpsc::Sender<PgNotificationDispatch>) -> Result<()> {
         let config = self.config.clone();
-        Self::connect(config, tx).await.map(|this| {
+        Self::connect(config, tx, self.dispatch_id).await.map(|this| {
             *self = this;
         })
     }
@@ -99,6 +131,11 @@ impl PgEventDispatcher {
     /// Return the pid session of the connection
     pub fn session_pid(&self) -> i32 {
         self.session_pid
+    }
+
+    /// The dispatch id of events sent by this dispatcher
+    pub fn dispatch_id(&self) -> i32 {
+        self.dispatch_id
     }
 
     async fn get_session_pid(client: &Client) -> Result<i32> {

@@ -57,6 +57,11 @@ pub struct Config {
     /// events buffer size
     #[serde(default = "default_events_buffer_size")]
     pub events_buffer_size: usize,
+
+    /// Number of workers
+    /// Optional: the default number of workers is half the number of Cpu
+    /// (1 minimum)
+    pub num_workers: Option<usize>,
 }
 
 ///
@@ -125,14 +130,21 @@ impl Config {
                 }
             }
         }
-        conf.sanitize();
+        conf.sanitize()?;
         Ok(conf)
     }
 
-    fn sanitize(&mut self) {
+    fn sanitize(&mut self) -> Result<()> {
         self.channels.iter_mut().for_each(|c| c.sanitize());
+
+        if let Some(workers) = self.num_workers {
+            if workers == 0 {
+                self.num_workers = None;
+            }
+        }
+        Ok(())
     }
-    
+
     /// Return the list of subscripitons
     pub fn subscriptions(&self) -> impl Iterator<Item = &str> {
         self.channels.iter().map(|c| c.id.as_ref())

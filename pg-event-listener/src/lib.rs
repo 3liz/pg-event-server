@@ -3,7 +3,7 @@
 //!
 mod dispatcher;
 
-pub use dispatcher::PgEventDispatcher;
+pub use dispatcher::{PgEventDispatcher, PgNotificationDispatch};
 
 pub type Error = tokio_postgres::error::Error;
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -18,14 +18,14 @@ pub use tokio_postgres::{config::Config, Notification};
 /// and listen to event
 pub struct PgEventListener {
     dispatcher: PgEventDispatcher,
-    rx: mpsc::Receiver<Notification>,
+    rx: mpsc::Receiver<PgNotificationDispatch>,
 }
 
 impl PgEventListener {
     /// Initialize a `PgEventListener`
     pub async fn connect(config: Config) -> Result<Self> {
         let (tx, rx) = mpsc::channel(16);
-        let dispatcher = PgEventDispatcher::connect(config, tx).await?;
+        let dispatcher = PgEventDispatcher::connect(config, tx, 0).await?;
         Ok(Self { dispatcher, rx })
     }
 
@@ -36,7 +36,7 @@ impl PgEventListener {
         if self.is_closed() {
             None
         } else {
-            self.rx.recv().await
+            self.rx.recv().await.map(|n| n.take_notification())
         }
     }
 

@@ -1,8 +1,8 @@
 //!
 //! Handle postgres events
+//
 //!
-//!
-use pg_event_listener::{Config, Notification, PgEventDispatcher};
+use pg_event_listener::{Config, Notification, PgEventDispatcher, PgNotificationDispatch};
 use tokio::sync::mpsc;
 
 use crate::{config::ChannelConfig, Result};
@@ -57,18 +57,17 @@ pub struct Channel {
     id: String,
     /// Allowed events for this channel
     events: Vec<String>,
-    /// The pid of the session for this
-    /// channel
-    session_pid: i32,
+    /// The event dispatch_id
+    dispatch_id: i32,
 }
 
 impl Channel {
     /// Create new [`Channel`]
-    pub fn new(session_pid: i32, conf: ChannelConfig) -> Self {
+    pub fn new(dispatch_id: i32, conf: ChannelConfig) -> Self {
         Self {
             id: conf.id,
             events: conf.allowed_events,
-            session_pid,
+            dispatch_id,
         }
     }
     /// The identfier for this channel
@@ -77,8 +76,8 @@ impl Channel {
     }
     /// Return true if that Channel is listening
     /// for `event`
-    pub fn is_listening_for(&self, event: &str) -> bool {
-        self.events.iter().any(|e| *e == event)
+    pub fn is_listening_for(&self, dispatch_id: i32, event: &str) -> bool {
+        self.dispatch_id == dispatch_id && self.events.iter().any(|e| *e == event)
     }
 }
 
@@ -90,8 +89,9 @@ impl Channel {
 pub struct EventDispatch {
     pool: Vec<PgEventDispatcher>,
     channels: Vec<Channel>,
-    rx: mpsc::Receiver<Notification>,
-    tx: mpsc::Sender<Notification>,
+    rx: mpsc::Receiver<PgNotificationDispatch>,
+    tx: mpsc::Sender<PgNotificationDispatch>,
+    dispatch_id: i32,
 }
 
 impl EventDispatch {
@@ -106,6 +106,7 @@ impl EventDispatch {
             channels: vec![],
             rx,
             tx,
+            dispatch_id: 0,
         }
     }
 
@@ -145,10 +146,12 @@ impl EventDispatch {
         {
             Some(dispatcher) => {
                 listen(dispatcher, &conf.allowed_events).await?;
-                Ok(dispatcher.session_pid())
+                Ok(dispatcher.dispatch_id())
             }
             None => {
-                let dispatcher = PgEventDispatcher::connect(pgconfig, self.tx.clone()).await?;
+                self.dispatch_id += 1;
+                let dispatcher =
+                    PgEventDispatcher::connect(pgconfig, self.tx.clone(), self.dispatch_id).await?;
                 log::debug!(
                     "Pool: Created dispatcher  for session {}: {:#?}",
                     dispatcher.session_pid(),
@@ -157,12 +160,13 @@ impl EventDispatch {
                 listen(&dispatcher, &conf.allowed_events).await?;
 
                 let session_pid = dispatcher.session_pid();
+                let dispatch_id = dispatcher.dispatch_id();
                 self.pool.push(dispatcher);
                 log::info!(
                     "Pool: Added pg_event dispatcher for session: {}",
                     session_pid
                 );
-                Ok(session_pid)
+                Ok(dispatch_id)
             }
         }
     }
@@ -172,8 +176,8 @@ impl EventDispatch {
         // Create postgres configuration
         // TODO Make sure that a channel with the same id does not already
         // exists.
-        let session = self.add_connection(&conf).await?;
-        self.channels.push(Channel::new(session, conf));
+        let dispatch = self.add_connection(&conf).await?;
+        self.channels.push(Channel::new(dispatch, conf));
         Ok(())
     }
 
@@ -196,24 +200,29 @@ impl EventDispatch {
     {
         use uuid::Uuid;
 
-        while let Some(notification) = self.rx.recv().await {
-            let event = notification.channel();
-            let session = notification.process_id();
+        while let Some(dispatch) = self.rx.recv().await {
+            let event = dispatch.notification().channel();
+            let remote_session = dispatch.notification().process_id();
+
+            let dispatch_id = dispatch.dispatch_id();
 
             // Find all all channels for this event
             let channels: Vec<String> = self
                 .channels
                 .iter()
-                .filter_map(|chan| chan.is_listening_for(event).then(|| chan.id().to_string()))
+                .filter_map(|chan| {
+                    chan.is_listening_for(dispatch_id, event)
+                        .then(|| chan.id().to_string())
+                })
                 .collect();
 
             if !channels.is_empty() {
                 // Each event will have a unique identifier
                 let id = Uuid::new_v4().to_string();
-                log::info!("EVENT({session}) {event}: {id}");
-                f(Event::new(id, notification, channels));
+                log::info!("EVENT({remote_session}) {event}: {id}");
+                f(Event::new(id, dispatch.take_notification(), channels));
             } else {
-                log::error!("Unprocessed event '{event}' for session '{session}'");
+                log::error!("Unprocessed event '{event}' for session '{remote_session}'");
             }
         }
     }

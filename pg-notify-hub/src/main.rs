@@ -33,7 +33,7 @@ use clap::{ArgAction, Parser};
 struct Cli {
     /// Path to configuration file
     #[arg(long)]
-    config: String,
+    conf: String,
     #[arg(short, long, action = ArgAction::Count)]
     verbose: u8,
 }
@@ -90,13 +90,14 @@ async fn main() -> Result<()> {
 
     let args = Cli::parse();
 
-    let conf = config::read_config(Path::new(&args.config))?;
+    let conf = config::read_config(Path::new(&args.conf))?;
 
     init_logger(args.verbose);
 
     let bind_address = conf.server.listen.clone();
     let worker_buffer_size = conf.worker_buffer_size;
     let allowed_subscriptions: HashSet<_> = conf.subscriptions().map(|s| s.into()).collect();
+    let num_workers = conf.num_workers.unwrap_or_else(|| num_cpus::get_physical());
 
     eprintln!("Starting pg event server on: {}", bind_address);
 
@@ -131,6 +132,7 @@ async fn main() -> Result<()> {
         app
     })
     .bind(&bind_address)?
+    .workers(num_workers)
     .run()
     .await
     .map_err(Error::from)

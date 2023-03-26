@@ -1132,6 +1132,7 @@ dependencies = [
  "glob",
  "lazy_static",
  "log",
+ "num_cpus",
  "pg-config",
  "pg-event-listener",
  "serde",
