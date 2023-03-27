@@ -1,11 +1,13 @@
 //!
 //! Handle postgres events
-//
 //!
-use pg_event_listener::{Config, Notification, PgEventDispatcher, PgNotificationDispatch};
+//!
+use crate::{config::ChannelConfig, pool::PgNotificationDispatch, pool::Pool, Result};
+use pg_event_listener::Notification;
+use std::time::Duration;
 use tokio::sync::mpsc;
 
-use crate::{config::ChannelConfig, Result};
+use crate::config::Config;
 
 /// Event broadcasted to
 /// All workers
@@ -87,11 +89,10 @@ impl Channel {
 
 /// Channel pool
 pub struct EventDispatch {
-    pool: Vec<PgEventDispatcher>,
+    pool: Pool,
     channels: Vec<Channel>,
     rx: mpsc::Receiver<PgNotificationDispatch>,
-    tx: mpsc::Sender<PgNotificationDispatch>,
-    dispatch_id: i32,
+    reconnect_delay: u16,
 }
 
 impl EventDispatch {
@@ -99,116 +100,58 @@ impl EventDispatch {
     ///
     /// `buffer` is the channel buffer size:
     /// see [`tokio::sync::mpsc::channel`]
-    pub fn new(buffer: usize) -> Self {
-        let (tx, rx) = mpsc::channel(buffer);
-        Self {
-            pool: vec![],
-            channels: vec![],
+    pub async fn connect(config: &Config) -> Result<Self> {
+        let (tx, rx) = mpsc::channel(config.events_buffer_size);
+        let reconnect_delay = config.reconnect_delay;
+        let mut pool = Pool::new(tx);
+
+        let mut channels = Vec::<Channel>::with_capacity(config.channels.len());
+        for conf in config.channels.iter() {
+            // Create postgres configuration
+            // TODO Make sure that a channel with the same id does not already
+            // exists.
+            let dispatch = pool.add_connection(conf).await?;
+            channels.push(Channel::new(dispatch, conf.clone()));
+        }
+
+        Ok(Self {
+            pool,
+            channels,
             rx,
-            tx,
-            dispatch_id: 0,
-        }
+            reconnect_delay,
+        })
     }
 
-    /// Return an iterator over Channels
-    pub fn iter_channels(&self) -> impl Iterator<Item = &Channel> {
-        self.channels.iter()
-    }
-
-    /// Compare the configurations
-    /// Return true if the host, user and database are the same
-    fn use_same_connection(dispatcher: &PgEventDispatcher, config: &Config) -> bool {
-        let this = dispatcher.config();
-        this.get_hosts() == config.get_hosts()
-            && this.get_dbname() == config.get_dbname()
-            && this.get_user() == config.get_user()
-    }
-
-    /// Addd a new connection to the connection pool
-    ///
-    /// No new connection is created if a connection already exists which
-    /// target the same host, user and database.
-    pub async fn add_connection(&mut self, conf: &ChannelConfig) -> Result<i32> {
-        async fn listen(dispatcher: &PgEventDispatcher, events: &[String]) -> Result<()> {
-            for event in events.iter() {
-                dispatcher.listen(event).await?;
+    /// Pool handler in charge of reconnection
+    fn start_pool_handler(mut pool: Pool) {
+        actix_web::rt::spawn(async move {
+            loop {
+                actix_web::rt::time::sleep(Duration::from_secs(60)).await;
+                pool.reconnect().await;
             }
-            Ok(())
-        }
-
-        // Created postgres configuration
-        log::debug!("Loading configuration channel for {}", conf.id);
-        let pgconfig = pg_config::load_pg_config(Some(&conf.connection_string))?;
-        match self
-            .pool
-            .iter()
-            .find(|d| Self::use_same_connection(d, &pgconfig))
-        {
-            Some(dispatcher) => {
-                listen(dispatcher, &conf.allowed_events).await?;
-                Ok(dispatcher.dispatch_id())
-            }
-            None => {
-                self.dispatch_id += 1;
-                let dispatcher =
-                    PgEventDispatcher::connect(pgconfig, self.tx.clone(), self.dispatch_id).await?;
-                log::debug!(
-                    "Pool: Created dispatcher  for session {}: {:#?}",
-                    dispatcher.session_pid(),
-                    dispatcher.config()
-                );
-                listen(&dispatcher, &conf.allowed_events).await?;
-
-                let session_pid = dispatcher.session_pid();
-                let dispatch_id = dispatcher.dispatch_id();
-                self.pool.push(dispatcher);
-                log::info!(
-                    "Pool: Added pg_event dispatcher for session: {}",
-                    session_pid
-                );
-                Ok(dispatch_id)
-            }
-        }
+        });
     }
 
-    /// Add a channel from the configuration definition
-    pub async fn add_channel(&mut self, conf: ChannelConfig) -> Result<()> {
-        // Create postgres configuration
-        // TODO Make sure that a channel with the same id does not already
-        // exists.
-        let dispatch = self.add_connection(&conf).await?;
-        self.channels.push(Channel::new(dispatch, conf));
-        Ok(())
-    }
-
-    /// Convenient method for adding channels from configuration
-    /// collection
-    pub async fn listen_from<T>(&mut self, channels: T) -> Result<()>
-    where
-        T: IntoIterator<Item = ChannelConfig>,
-    {
-        for conf in channels.into_iter() {
-            self.add_channel(conf).await?;
-        }
-        Ok(())
-    }
-
-    /// Listen for events
-    pub async fn dispatch<F>(&mut self, mut f: F)
+    /// Listen for event
+    pub async fn dispatch<F>(self, mut f: F)
     where
         F: FnMut(Event),
     {
+        let channels = self.channels;
+        let mut rx = self.rx;
+
+        Self::start_pool_handler(self.pool);
+
         use uuid::Uuid;
 
-        while let Some(dispatch) = self.rx.recv().await {
+        while let Some(dispatch) = rx.recv().await {
             let event = dispatch.notification().channel();
             let remote_session = dispatch.notification().process_id();
 
             let dispatch_id = dispatch.dispatch_id();
 
-            // Find all all channels for this event
-            let channels: Vec<String> = self
-                .channels
+            // Find all candidates channels for this event
+            let ids: Vec<String> = channels
                 .iter()
                 .filter_map(|chan| {
                     chan.is_listening_for(dispatch_id, event)
@@ -216,11 +159,11 @@ impl EventDispatch {
                 })
                 .collect();
 
-            if !channels.is_empty() {
+            if !ids.is_empty() {
                 // Each event will have a unique identifier
                 let id = Uuid::new_v4().to_string();
                 log::info!("EVENT({remote_session}) {event}: {id}");
-                f(Event::new(id, dispatch.take_notification(), channels));
+                f(Event::new(id, dispatch.take_notification(), ids));
             } else {
                 log::error!("Unprocessed event '{event}' for session '{remote_session}'");
             }

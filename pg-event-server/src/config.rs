@@ -27,6 +27,10 @@ const fn default_events_buffer_size() -> usize {
     1024
 }
 
+const fn default_reconnection_delay() -> u16 {
+    60
+}
+
 ///
 /// Server global configuration
 ///
@@ -38,6 +42,11 @@ pub struct Server {
     /// Description of the server
     #[serde(default = "default_title")]
     pub title: String,
+
+    /// Number of workers
+    /// Optional: the default number of workers is half the number of Cpu
+    /// (1 minimum)
+    pub num_workers: Option<usize>,
 }
 
 ///
@@ -58,10 +67,9 @@ pub struct Config {
     #[serde(default = "default_events_buffer_size")]
     pub events_buffer_size: usize,
 
-    /// Number of workers
-    /// Optional: the default number of workers is half the number of Cpu
-    /// (1 minimum)
-    pub num_workers: Option<usize>,
+    /// Reconnection delay in seconds
+    #[serde(default = "default_reconnection_delay")]
+    pub reconnect_delay: u16,
 }
 
 ///
@@ -137,9 +145,9 @@ impl Config {
     fn sanitize(&mut self) -> Result<()> {
         self.channels.iter_mut().for_each(|c| c.sanitize());
 
-        if let Some(workers) = self.num_workers {
+        if let Some(workers) = self.server.num_workers {
             if workers == 0 {
-                self.num_workers = None;
+                self.server.num_workers = None;
             }
         }
         Ok(())

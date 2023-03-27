@@ -16,6 +16,7 @@ mod config;
 mod errors;
 mod events;
 mod landingpage;
+mod pool;
 mod subscribe;
 
 use subscribe::Broadcaster;
@@ -51,9 +52,7 @@ use tokio::sync::watch::{self, Receiver, Sender};
 // Event dispatcher
 //
 async fn start_event_dispatcher(tx: Sender<Event>, conf: config::Config) -> Result<()> {
-    let mut dispatcher = EventDispatch::new(conf.events_buffer_size);
-    // Load channel configuration
-    dispatcher.listen_from(conf.channels.into_iter()).await?;
+    let dispatcher = EventDispatch::connect(&conf).await?;
     // Start dispatching
     actix_web::rt::spawn(async move {
         dispatcher
@@ -97,7 +96,10 @@ async fn main() -> Result<()> {
     let bind_address = conf.server.listen.clone();
     let worker_buffer_size = conf.worker_buffer_size;
     let allowed_subscriptions: HashSet<_> = conf.subscriptions().map(|s| s.into()).collect();
-    let num_workers = conf.num_workers.unwrap_or_else(|| num_cpus::get_physical());
+    let num_workers = conf
+        .server
+        .num_workers
+        .unwrap_or_else(num_cpus::get_physical);
 
     eprintln!("Starting pg event server on: {}", bind_address);
 
@@ -113,7 +115,7 @@ async fn main() -> Result<()> {
 
         start_event_listener(broadcaster.clone(), rx.clone());
 
-        let app = App::new()
+        App::new()
             .wrap(Logger::default())
             .service(
                 web::resource("/")
@@ -127,9 +129,7 @@ async fn main() -> Result<()> {
                         "/subscribe/{id:.*}",
                         web::get().to(Broadcaster::do_subscribe),
                     ),
-            );
-
-        app
+            )
     })
     .bind(&bind_address)?
     .workers(num_workers)

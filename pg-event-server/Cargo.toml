@@ -29,8 +29,12 @@ num_cpus = "1"
 [package.metadata.deb]
 maintainer = "David Marteau <dmarteau@3liz.com>"
 copyright = "2023, 3liz"
+license-file = "../LICENSE-APACHE"
 extended-description = """\
-Relay Postgres event to HTTP SSE channels. """ 
+Proxy Postgres event as HTTP Server Send Event.
+A server that subscribes to Postgres notification
+and serve them to HTTP clients as Server Send Event 
+(SSE). """ 
 depends = "$auto"
 section = "utility"
 priority = "optional"

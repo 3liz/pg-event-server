@@ -3,7 +3,7 @@
 //!
 mod dispatcher;
 
-pub use dispatcher::{PgEventDispatcher, PgNotificationDispatch};
+pub use dispatcher::PgEventDispatcher;
 
 pub type Error = tokio_postgres::error::Error;
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -18,14 +18,14 @@ pub use tokio_postgres::{config::Config, Notification};
 /// and listen to event
 pub struct PgEventListener {
     dispatcher: PgEventDispatcher,
-    rx: mpsc::Receiver<PgNotificationDispatch>,
+    rx: mpsc::Receiver<Notification>,
 }
 
 impl PgEventListener {
     /// Initialize a `PgEventListener`
     pub async fn connect(config: Config) -> Result<Self> {
         let (tx, rx) = mpsc::channel(16);
-        let dispatcher = PgEventDispatcher::connect(config, tx, 0).await?;
+        let dispatcher = PgEventDispatcher::connect(config, tx).await?;
         Ok(Self { dispatcher, rx })
     }
 
@@ -36,19 +36,19 @@ impl PgEventListener {
         if self.is_closed() {
             None
         } else {
-            self.rx.recv().await.map(|n| n.take_notification())
+            self.rx.recv().await
         }
     }
 
     /// Listen the specified channel
     #[inline]
-    pub async fn listen(&self, channel: &str) -> Result<()> {
+    pub async fn listen(&mut self, channel: &str) -> Result<bool> {
         self.dispatcher.listen(channel).await
     }
 
     /// Unlisten the specified channel
     #[inline]
-    pub async fn unlisten(&self, channel: &str) -> Result<()> {
+    pub async fn unlisten(&mut self, channel: &str) -> Result<bool> {
         self.dispatcher.unlisten(channel).await
     }
 

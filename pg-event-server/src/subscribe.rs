@@ -12,7 +12,7 @@ use std::time::SystemTime;
 
 use actix_web::{web, HttpRequest, Responder};
 use actix_web_lab::sse;
-use futures::{future, FutureExt};
+use futures::future;
 use uuid::Uuid;
 
 use crate::{events::Event, Error, Result};
@@ -93,7 +93,8 @@ impl Broadcaster {
             client_id,
         };
 
-        log::info!("SUBSCRIBE({},{}) {}",
+        log::info!(
+            "SUBSCRIBE({},{}) {}",
             chan.id,
             chan.client_id_str(),
             chan.realip_remote_addr()
@@ -167,8 +168,9 @@ impl Broadcaster {
 
                         let ok = result.is_ok();
                         if !ok {
-                            let ident = chan.ident.clone();
-                            log::info!("Connection closed for {ident} {} {:?}", 
+                            let ident = chan.ident;
+                            log::info!(
+                                "Connection closed for {ident} {} {:?}",
                                 chan.client_id_str(),
                                 chan.realip_remote_addr(),
                             );
@@ -186,23 +188,25 @@ impl Broadcaster {
                     }),
             )
             .await
-        }.into_iter().filter_map(|d| d).collect::<HashSet<_>>();
+        }
+        .into_iter()
+        .flatten()
+        .collect::<HashSet<_>>();
 
         if !res.is_empty() {
             // Clean up dead connections
             let mut subs = self.subs.borrow_mut();
-            event.channels() 
-                .for_each(|channel| {
-                    if let Some(pool) = subs.get_mut(channel) {
-                        pool.retain(|chan| {
-                            let closed = res.contains(&chan.ident);
-                            if closed {
-                                log::debug!("Cleaning closed connection: {:?}", chan.ident); 
-                            }
-                            closed
-                        })
-                    }
-                })
+            event.channels().for_each(|channel| {
+                if let Some(pool) = subs.get_mut(channel) {
+                    pool.retain(|chan| {
+                        let closed = res.contains(&chan.ident);
+                        if closed {
+                            log::debug!("Cleaning closed connection: {:?}", chan.ident);
+                        }
+                        closed
+                    })
+                }
+            })
         }
     }
 
