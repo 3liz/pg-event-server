@@ -1,7 +1,7 @@
 
 [workspace]
 members = [
-  "pg-notify-hub",
+  "pg-event-server",
   "pg-event-listener",
   "pg-config",
 ]

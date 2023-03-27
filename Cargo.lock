@@ -1121,7 +1121,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pg-notify-hub"
+name = "pg-event-server"
 version = "0.1.0"
 dependencies = [
  "actix-web",

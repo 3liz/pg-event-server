@@ -27,3 +27,4 @@ There will be only one connection per user and database.
 
 These connections are open at server startup and no more connection 
 will be opened during the running time of the server.
+
