@@ -29,6 +29,15 @@ struct Channel {
     client_id: Option<String>,
 }
 
+impl Channel {
+    fn client_id_str(&self) -> &str {
+        self.client_id.as_deref().unwrap_or("<anonymous>")
+    }
+    fn realip_remote_addr(&self) -> &str {
+        self.realip_remote_addr.as_deref().unwrap_or("<>")
+    }
+}
+
 #[derive(Default)]
 pub struct Broadcaster {
     buffer_size: usize,
@@ -67,14 +76,11 @@ impl Broadcaster {
             .get("X-Identity")
             .map(|s| s.to_str().unwrap().into());
 
-        log::info!("SUBSCRIBE({id},{client_id:?})");
-
-        let (tx, rx) = sse::channel(self.buffer_size);
-
         let connection_info = req.connection_info();
         let realip_remote_addr = connection_info.realip_remote_addr().map(String::from);
         let peer_addr = connection_info.peer_addr().map(String::from);
 
+        let (tx, rx) = sse::channel(self.buffer_size);
         let chan = Channel {
             id,
             ident: Uuid::new_v4(),
@@ -86,6 +92,12 @@ impl Broadcaster {
             peer_addr,
             client_id,
         };
+
+        log::info!("SUBSCRIBE({},{}) {}",
+            chan.id,
+            chan.client_id_str(),
+            chan.realip_remote_addr()
+        );
 
         // Add channel to pool
         // We cannot be sure that the
@@ -136,40 +148,62 @@ impl Broadcaster {
         // This should be ok as long as in every other place where we
         // perform a mutable borrow we use the `try_borrow_mut()`
         // method to ensure availability.
-        let subs = self.subs.borrow();
-        let res = future::join_all(
-            event
-                .channels()
-                .filter_map(|channel| subs.get(channel))
-                .flat_map(|pool| pool.iter())
-                .map(|chan| async {
-                    let result = chan
-                        .sender
-                        .send(
-                            sse::Data::new(event.payload())
-                                .id(event.id())
-                                .event(event.event()),
-                        )
-                        .await;
+        let res = {
+            let subs = self.subs.borrow();
+            future::join_all(
+                event
+                    .channels()
+                    .filter_map(|channel| subs.get(channel))
+                    .flat_map(|pool| pool.iter())
+                    .map(|chan| async {
+                        let result = chan
+                            .sender
+                            .send(
+                                sse::Data::new(event.payload())
+                                    .id(event.id())
+                                    .event(event.event()),
+                            )
+                            .await;
 
-                    let ident = &chan.ident;
-                    let ok = result.is_ok();
-                    if !ok {
-                        log::debug!("Connection closed for {ident}");
-                        Some(ident)
-                    } else {
-                        log::debug!(
-                            "SEND({},{}) {}: {}",
-                            chan.id,
-                            event.session_pid(),
-                            event.event(),
-                            event.id()
-                        );
-                        None
+                        let ok = result.is_ok();
+                        if !ok {
+                            let ident = chan.ident.clone();
+                            log::info!("Connection closed for {ident} {} {:?}", 
+                                chan.client_id_str(),
+                                chan.realip_remote_addr(),
+                            );
+                            Some(ident)
+                        } else {
+                            log::debug!(
+                                "SEND({},{}) {}: {}",
+                                chan.id,
+                                event.session_pid(),
+                                event.event(),
+                                event.id()
+                            );
+                            None
+                        }
+                    }),
+            )
+            .await
+        }.into_iter().filter_map(|d| d).collect::<HashSet<_>>();
+
+        if !res.is_empty() {
+            // Clean up dead connections
+            let mut subs = self.subs.borrow_mut();
+            event.channels() 
+                .for_each(|channel| {
+                    if let Some(pool) = subs.get_mut(channel) {
+                        pool.retain(|chan| {
+                            let closed = res.contains(&chan.ident);
+                            if closed {
+                                log::debug!("Cleaning closed connection: {:?}", chan.ident); 
+                            }
+                            closed
+                        })
                     }
-                }),
-        )
-        .await;
+                })
+        }
     }
 
     /// Broadcast event to all listener of the subscription `id`
