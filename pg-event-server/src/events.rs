@@ -123,10 +123,10 @@ impl EventDispatch {
     }
 
     /// Pool handler in charge of reconnection
-    fn start_pool_handler(mut pool: Pool) {
+    fn start_pool_handler(mut pool: Pool, reconnect_delay: u16) {
         actix_web::rt::spawn(async move {
             loop {
-                actix_web::rt::time::sleep(Duration::from_secs(60)).await;
+                actix_web::rt::time::sleep(Duration::from_secs(reconnect_delay.into())).await;
                 pool.reconnect().await;
             }
         });
@@ -140,7 +140,7 @@ impl EventDispatch {
         let channels = self.channels;
         let mut rx = self.rx;
 
-        Self::start_pool_handler(self.pool);
+        Self::start_pool_handler(self.pool, self.reconnect_delay);
 
         use uuid::Uuid;
 
