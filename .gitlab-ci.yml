@@ -1,0 +1,32 @@
+stages:
+- test
+- build
+
+variables:
+  CARGO_HOME: $CI_PROJECT_DIR/.cargo
+
+cache:
+  paths:
+    - $CI_PROJECT_DIR/.cargo
+
+test:
+  stage: test
+  image: registry.snap.lizlan:5000/factory-ci-runner:rust
+  script:
+    - cargo test
+  environment:
+    name: snap
+  tags:
+    - infrav3-plain
+
+build:
+  stage: build
+  image: registry.snap.lizlan:5000/factory-ci-runner:rust
+  script:
+    - cargo deb
+    - cp -v target/debian/*.deb /srv/storage/debs/
+  environment:
+    name: snap
+  tags:
+    - infrav3-plain
+
