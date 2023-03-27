@@ -38,6 +38,10 @@ impl Pool {
 
     /// Handle reconnection
     pub async fn reconnect(&mut self) {
+        if !self.pool.iter().any(|d| d.is_closed()) {
+            return;
+        }
+
         let _ = future::join_all(self.pool.iter_mut().map(|dispatcher| async {
             if dispatcher.is_closed() {
                 if let Err(err) = dispatcher.respawn().await {
@@ -51,9 +55,10 @@ impl Pool {
                 } else {
                     let conf = dispatcher.config();
                     log::info!(
-                        "Succeded to reconnect to database {} on {:?}",
+                        "Succeded to reconnect to database {} on {:?} (backend session: {})",
                         conf.get_dbname().unwrap_or("<unknown>"),
                         conf.get_hosts(),
+                        dispatcher.session_pid(),
                     );
                 }
             }
