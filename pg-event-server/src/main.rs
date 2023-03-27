@@ -35,8 +35,12 @@ struct Cli {
     /// Path to configuration file
     #[arg(long)]
     conf: String,
+    /// Increase verbosity
     #[arg(short, long, action = ArgAction::Count)]
     verbose: u8,
+    /// Check configuration only
+    #[arg(long)]
+    check: bool,
 }
 
 //
@@ -89,9 +93,14 @@ async fn main() -> Result<()> {
 
     let args = Cli::parse();
 
+    init_logger(args.verbose);
+
     let conf = config::read_config(Path::new(&args.conf))?;
 
-    init_logger(args.verbose);
+    if args.check {
+        println!("Configuration looks ok.");
+        return Ok(());
+    }
 
     let bind_address = conf.server.listen.clone();
     let worker_buffer_size = conf.worker_buffer_size;
