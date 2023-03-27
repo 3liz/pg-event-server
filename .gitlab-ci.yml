@@ -23,7 +23,7 @@ build:
   stage: build
   image: registry.snap.lizlan:5000/factory-ci-runner:rust
   script:
-    - cargo deb
+    - cargo deb -p pg-event-server
     - cp -v target/debian/*.deb /srv/storage/debs/
   environment:
     name: snap

@@ -36,8 +36,8 @@ pub enum Error {
     IOError(#[from] std::io::Error),
     #[error("Service File Error")]
     PgServiceFileError(#[from] ini::Error),
-    #[error("Service file not found")]
-    PgServiceFileNotFound,
+    #[error("Service file not found: {0}")]
+    PgServiceFileNotFound(String),
     #[error("Definition of service {0} not found")]
     PgServiceNotFound(String),
     #[error("Invalid ssl mode, expecting 'prefer', 'require' or 'disable': found '{0}'")]
@@ -160,11 +160,11 @@ fn load_config_from_service(config: &mut Config, service_name: &str) -> Result<(
                     }
                 })
         } else {
-            Err(Error::PgServiceFileNotFound)
+            Err(Error::PgServiceFileNotFound(path.to_string_lossy().into_owned()))
         }
     }
 
-    let found = match user_service_file() {
+    let found = match user_service_file().and_then(|p| p.as_path().exists().then_some(p)) {
         Some(path) => get_service_params(config, &path, service_name)?,
         None => false,
     } || match sysconf_service_file() {
