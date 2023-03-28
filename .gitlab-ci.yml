@@ -1,6 +1,7 @@
 stages:
 - test
 - build
+- release
 
 variables:
   CARGO_HOME: $CI_PROJECT_DIR/.cargo
@@ -19,14 +20,49 @@ test:
   tags:
     - infrav3-plain
 
-build:
+dev:docker:
   stage: build
+  script:
+    - make -C .docker build deliver
+  environment:
+    name: snap
+  only:
+    refs:
+      - tags
+      - main
+  tags:
+    - infrav3-dind
+
+release:docker:
+  stage: release
+  script: 
+    - make -C .docker build deliver
+    - $FACTORY_SCRIPTS/release-image.sh pg-event-server
+  environment:
+    name: production
+  artifacts:
+    paths:
+      - ".docker/factory.manifest"
+  when: manual
+  only:
+    refs:
+      - tags
+  tags:
+    - infrav3-dind
+  variables:
+    FACTORY_MANIFEST: ".docker/factory.manifest"
+
+package:deb:
+  stage: release
   image: registry.snap.lizlan:5000/factory-ci-runner:rust
   script:
     - cargo deb -p pg-event-server
     - cp -v target/debian/*.deb /srv/storage/debs/
   environment:
     name: snap
+  only:
+    refs:
+      - tags
   tags:
     - infrav3-plain
 
