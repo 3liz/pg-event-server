@@ -22,7 +22,6 @@ mod subscribe;
 use subscribe::Broadcaster;
 
 use errors::{Error, Result};
-use std::collections::HashSet;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -104,7 +103,11 @@ async fn main() -> Result<()> {
 
     let bind_address = conf.server.listen.clone();
     let worker_buffer_size = conf.worker_buffer_size;
-    let allowed_subscriptions: HashSet<_> = conf.subscriptions().map(|s| s.into()).collect();
+    let channels = conf
+        .channels
+        .iter()
+        .map(|c| c.id.clone())
+        .collect::<Vec<_>>();
     let num_workers = conf
         .server
         .num_workers
@@ -117,10 +120,7 @@ async fn main() -> Result<()> {
     start_event_dispatcher(tx, conf).await?;
 
     HttpServer::new(move || {
-        let broadcaster = Rc::new(Broadcaster::new(
-            worker_buffer_size,
-            allowed_subscriptions.clone(),
-        ));
+        let broadcaster = Rc::new(Broadcaster::new(worker_buffer_size, channels.clone()));
 
         start_event_listener(broadcaster.clone(), rx.clone());
 

@@ -1,6 +1,14 @@
 //!
 //! Handle postgres events
 //!
+//! ## Operational mode
+//!
+//! 1. The postgres client receive a notification event.
+//! 2. All channels attached to these clients are selected from
+//!    their allowed event set.
+//! 3. The event is forwarded to watchers along with the list
+//!    of candidate channels.
+//!
 //!
 use crate::{config::ChannelConfig, pool::PgNotificationDispatch, pool::Pool, Result};
 use pg_event_listener::Notification;
@@ -8,6 +16,20 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 use crate::config::Config;
+
+pub type ChanId = usize;
+
+#[derive(Debug, Clone)]
+pub enum ChanIds {
+    One([ChanId; 1]),
+    Many(Vec<ChanId>),
+}
+
+impl Default for ChanIds {
+    fn default() -> Self {
+        Self::Many(vec![])
+    }
+}
 
 /// Event broadcasted to
 /// All workers
@@ -17,12 +39,12 @@ pub struct Event {
     event: String,
     session: i32,
     payload: String,
-    channels: Vec<String>,
+    channels: ChanIds,
 }
 
 impl Event {
     /// Create new event from notification
-    pub fn new(id: String, notification: Notification, channels: Vec<String>) -> Self {
+    pub fn new(id: String, notification: Notification, channels: ChanIds) -> Self {
         Self {
             id,
             session: notification.process_id(),
@@ -35,9 +57,12 @@ impl Event {
     pub fn id(&self) -> &str {
         &self.id
     }
-    /// Iterator to channels to be notified
-    pub fn channels(&self) -> impl Iterator<Item = &str> {
-        self.channels.iter().map(|s| s.as_ref())
+    /// Channels to be notified
+    pub fn channels(&self) -> &[ChanId] {
+        match &self.channels {
+            ChanIds::One(v) => v,
+            ChanIds::Many(v) => v.as_slice(),
+        }
     }
     /// Return the postgres channel name
     pub fn event(&self) -> &str {
@@ -151,15 +176,21 @@ impl EventDispatch {
             let dispatch_id = dispatch.dispatch_id();
 
             // Find all candidates channels for this event
-            let ids: Vec<String> = channels
+            let mut iter = channels
                 .iter()
-                .filter_map(|chan| {
-                    chan.is_listening_for(dispatch_id, event)
-                        .then(|| chan.id().to_string())
-                })
-                .collect();
+                .enumerate()
+                .filter_map(|(i, chan)| chan.is_listening_for(dispatch_id, event).then_some(i));
 
-            if !ids.is_empty() {
+            if let Some(first) = iter.next() {
+                let ids = match iter.next() {
+                    None => ChanIds::One([first]),
+                    Some(second) => {
+                        let mut v = vec![first, second];
+                        v.extend(iter);
+                        ChanIds::Many(v)
+                    }
+                };
+
                 // Each event will have a unique identifier
                 let id = Uuid::new_v4().to_string();
                 log::info!("EVENT({remote_session}) {event}: {id}");

@@ -152,11 +152,6 @@ impl Config {
         }
         Ok(())
     }
-
-    /// Return the list of subscripitons
-    pub fn subscriptions(&self) -> impl Iterator<Item = &str> {
-        self.channels.iter().map(|c| c.id.as_ref())
-    }
 }
 
 // Shortcut

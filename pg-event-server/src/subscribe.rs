@@ -15,12 +15,16 @@ use actix_web_lab::sse;
 use futures::future;
 use uuid::Uuid;
 
-use crate::{events::Event, Error, Result};
+use crate::{
+    events::{ChanId, Event},
+    Error, Result,
+};
 
-type Subscriptions = RefCell<HashMap<String, Vec<Channel>>>;
+type Subscriptions = RefCell<HashMap<ChanId, Vec<Channel>>>;
 
 struct Channel {
-    id: String,
+    id: ChanId,
+    path: String,
     ident: Uuid,
     sender: sse::Sender,
     timestamp: u64,
@@ -42,7 +46,7 @@ impl Channel {
 pub struct Broadcaster {
     buffer_size: usize,
     subs: Subscriptions,
-    allowed_subscriptions: HashSet<String>,
+    allowed_subscriptions: HashMap<String, ChanId>,
     pending_subscriptions: RefCell<Vec<Channel>>,
 }
 
@@ -50,27 +54,36 @@ pub struct Broadcaster {
 impl Broadcaster {
     /// Subscrible handler
     pub async fn do_subscribe(req: HttpRequest, bc: web::Data<Rc<Self>>) -> Result<impl Responder> {
-        let id: String = req.match_info().query("id").into();
+        let channel = req.match_info().query("id");
 
-        if !bc.allowed_subscriptions.contains(&id) {
-            return Err(Error::SubscriptionNotFound);
+        match bc.allowed_subscriptions.get(channel) {
+            Some(id) => bc.new_channel(&req, channel, *id).await,
+            None => Err(Error::SubscriptionNotFound),
         }
-        bc.new_channel(req, id).await
     }
 }
 
 impl Broadcaster {
     /// Crate new Broadcaster
-    pub fn new(buffer_size: usize, allowed_subscriptions: HashSet<String>) -> Self {
+    pub fn new(buffer_size: usize, channels: Vec<String>) -> Self {
         Self {
             buffer_size,
-            allowed_subscriptions,
+            allowed_subscriptions: channels
+                .into_iter()
+                .enumerate()
+                .map(|(i, s)| (s, i))
+                .collect(),
             ..Self::default()
         }
     }
 
     /// Create a new communication channel and register it
-    async fn new_channel(&self, req: HttpRequest, id: String) -> Result<impl Responder> {
+    async fn new_channel(
+        &self,
+        req: &HttpRequest,
+        path: &str,
+        id: ChanId,
+    ) -> Result<impl Responder> {
         let client_id: Option<String> = req
             .headers()
             .get("X-Identity")
@@ -83,6 +96,7 @@ impl Broadcaster {
         let (tx, rx) = sse::channel(self.buffer_size);
         let chan = Channel {
             id,
+            path: path.into(),
             ident: Uuid::new_v4(),
             sender: tx,
             timestamp: SystemTime::now()
@@ -94,8 +108,7 @@ impl Broadcaster {
         };
 
         log::info!(
-            "SUBSCRIBE({},{}) {}",
-            chan.id,
+            "SUBSCRIBE({path},{}) {}",
             chan.client_id_str(),
             chan.realip_remote_addr()
         );
@@ -108,7 +121,7 @@ impl Broadcaster {
             Ok(mut subs) => match subs.get_mut(&chan.id) {
                 Some(pool) => pool.push(chan),
                 None => {
-                    subs.insert(chan.id.clone(), vec![chan]);
+                    subs.insert(chan.id, vec![chan]);
                 }
             },
             Err(_) => {
@@ -133,9 +146,41 @@ impl Broadcaster {
                 .for_each(|chan| match subs.get_mut(&chan.id) {
                     Some(pool) => pool.push(chan),
                     None => {
-                        subs.insert(chan.id.clone(), vec![chan]);
+                        subs.insert(chan.id, vec![chan]);
                     }
                 });
+        }
+    }
+
+    /// Send event to subscribers
+    async fn send_event(chan: &Channel, event: &Event) -> Option<Uuid> {
+        let result = chan
+            .sender
+            .send(
+                sse::Data::new(event.payload())
+                    .id(event.id())
+                    .event(event.event()),
+            )
+            .await;
+
+        let ok = result.is_ok();
+        if !ok {
+            let ident = chan.ident;
+            log::info!(
+                "Connection closed for {ident} {} {:?}",
+                chan.client_id_str(),
+                chan.realip_remote_addr(),
+            );
+            Some(ident)
+        } else {
+            log::debug!(
+                "SEND({},{}) {}: {}",
+                chan.path,
+                event.session_pid(),
+                event.event(),
+                event.id()
+            );
+            None
         }
     }
 
@@ -154,38 +199,10 @@ impl Broadcaster {
             future::join_all(
                 event
                     .channels()
+                    .iter()
                     .filter_map(|channel| subs.get(channel))
                     .flat_map(|pool| pool.iter())
-                    .map(|chan| async {
-                        let result = chan
-                            .sender
-                            .send(
-                                sse::Data::new(event.payload())
-                                    .id(event.id())
-                                    .event(event.event()),
-                            )
-                            .await;
-
-                        let ok = result.is_ok();
-                        if !ok {
-                            let ident = chan.ident;
-                            log::info!(
-                                "Connection closed for {ident} {} {:?}",
-                                chan.client_id_str(),
-                                chan.realip_remote_addr(),
-                            );
-                            Some(ident)
-                        } else {
-                            log::debug!(
-                                "SEND({},{}) {}: {}",
-                                chan.id,
-                                event.session_pid(),
-                                event.event(),
-                                event.id()
-                            );
-                            None
-                        }
-                    }),
+                    .map(|chan| Self::send_event(chan, event)),
             )
             .await
         }
@@ -196,14 +213,14 @@ impl Broadcaster {
         if !res.is_empty() {
             // Clean up dead connections
             let mut subs = self.subs.borrow_mut();
-            event.channels().for_each(|channel| {
+            event.channels().iter().for_each(|channel| {
                 if let Some(pool) = subs.get_mut(channel) {
                     pool.retain(|chan| {
                         let closed = res.contains(&chan.ident);
                         if closed {
                             log::debug!("Cleaning closed connection: {:?}", chan.ident);
                         }
-                        closed
+                        !closed
                     })
                 }
             })
