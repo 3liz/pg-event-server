@@ -8,7 +8,7 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use std::time::SystemTime;
+//use std::time::SystemTime;
 
 use actix_web::{web, HttpRequest, Responder};
 use actix_web_lab::sse;
@@ -27,7 +27,7 @@ struct Channel {
     path: String,
     ident: Uuid,
     sender: sse::Sender,
-    timestamp: u64,
+    //timestamp: u64,
     realip_remote_addr: Option<String>,
     peer_addr: Option<String>,
     client_id: Option<String>,
@@ -37,8 +37,12 @@ impl Channel {
     fn client_id_str(&self) -> &str {
         self.client_id.as_deref().unwrap_or("<anonymous>")
     }
-    fn realip_remote_addr(&self) -> &str {
-        self.realip_remote_addr.as_deref().unwrap_or("<>")
+    fn realip_remote_addr(&self) -> Option<&str> {
+        self.realip_remote_addr.as_deref()
+    }
+
+    fn peer_addr(&self) -> Option<&str> {
+        self.peer_addr.as_deref()
     }
 }
 
@@ -99,18 +103,19 @@ impl Broadcaster {
             path: path.into(),
             ident: Uuid::new_v4(),
             sender: tx,
-            timestamp: SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)?
-                .as_secs(),
+            //timestamp: SystemTime::now()
+            //    .duration_since(SystemTime::UNIX_EPOCH)?
+            //    .as_secs(),
             realip_remote_addr,
             peer_addr,
             client_id,
         };
 
         log::info!(
-            "SUBSCRIBE({path},{}) {}",
+            "SUBSCRIBE({path},{}) <{}> (peer: '{}')",
             chan.client_id_str(),
-            chan.realip_remote_addr()
+            chan.realip_remote_addr().unwrap_or(""),
+            chan.peer_addr().unwrap_or(""),
         );
 
         // Add channel to pool
@@ -167,9 +172,10 @@ impl Broadcaster {
         if !ok {
             let ident = chan.ident;
             log::info!(
-                "Connection closed for {ident} {} {:?}",
+                "Connection closed for {ident} '{}' <{}> (peer: '{}')",
                 chan.client_id_str(),
-                chan.realip_remote_addr(),
+                chan.realip_remote_addr().unwrap_or(""),
+                chan.peer_addr().unwrap_or(""),
             );
             Some(ident)
         } else {

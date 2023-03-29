@@ -19,17 +19,12 @@ use crate::config::Config;
 
 pub type ChanId = usize;
 
-#[derive(Debug, Clone)]
-pub enum ChanIds {
-    One([ChanId; 1]),
-    Many(Vec<ChanId>),
-}
+// A simple readonly type for not allocating memory
+// when we have only one element, which should be
+// the vast majority of cases.
+use crate::utils::Values;
 
-impl Default for ChanIds {
-    fn default() -> Self {
-        Self::Many(vec![])
-    }
-}
+type ChanIds = Values<ChanId>;
 
 /// Event broadcasted to
 /// All workers
@@ -44,7 +39,7 @@ pub struct Event {
 
 impl Event {
     /// Create new event from notification
-    pub fn new(id: String, notification: Notification, channels: ChanIds) -> Self {
+    fn new(id: String, notification: Notification, channels: ChanIds) -> Self {
         Self {
             id,
             session: notification.process_id(),
@@ -59,10 +54,7 @@ impl Event {
     }
     /// Channels to be notified
     pub fn channels(&self) -> &[ChanId] {
-        match &self.channels {
-            ChanIds::One(v) => v,
-            ChanIds::Many(v) => v.as_slice(),
-        }
+        self.channels.as_slice()
     }
     /// Return the postgres channel name
     pub fn event(&self) -> &str {
@@ -80,8 +72,6 @@ impl Event {
 
 /// Channel
 pub struct Channel {
-    /// Identifier for this channel
-    id: String,
     /// Allowed events for this channel
     events: Vec<String>,
     /// The event dispatch_id
@@ -92,14 +82,9 @@ impl Channel {
     /// Create new [`Channel`]
     pub fn new(dispatch_id: i32, conf: ChannelConfig) -> Self {
         Self {
-            id: conf.id,
             events: conf.allowed_events,
             dispatch_id,
         }
-    }
-    /// The identfier for this channel
-    pub fn id(&self) -> &str {
-        &self.id
     }
     /// Return true if that Channel is listening
     /// for `event`
@@ -176,21 +161,13 @@ impl EventDispatch {
             let dispatch_id = dispatch.dispatch_id();
 
             // Find all candidates channels for this event
-            let mut iter = channels
+            let ids = channels
                 .iter()
                 .enumerate()
-                .filter_map(|(i, chan)| chan.is_listening_for(dispatch_id, event).then_some(i));
+                .filter_map(|(i, chan)| chan.is_listening_for(dispatch_id, event).then_some(i))
+                .collect::<ChanIds>();
 
-            if let Some(first) = iter.next() {
-                let ids = match iter.next() {
-                    None => ChanIds::One([first]),
-                    Some(second) => {
-                        let mut v = vec![first, second];
-                        v.extend(iter);
-                        ChanIds::Many(v)
-                    }
-                };
-
+            if !ids.is_empty() {
                 // Each event will have a unique identifier
                 let id = Uuid::new_v4().to_string();
                 log::info!("EVENT({remote_session}) {event}: {id}");

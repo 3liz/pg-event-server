@@ -18,6 +18,7 @@ mod events;
 mod landingpage;
 mod pool;
 mod subscribe;
+mod utils;
 
 use subscribe::Broadcaster;
 
