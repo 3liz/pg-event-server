@@ -1,6 +1,6 @@
 //!
 //! Connection string parsing with support for service file
-//! and a subset of psql environment variables
+//! and a subset of psql environment variables.
 //!
 //! ## Environment variables
 //!
@@ -9,12 +9,21 @@
 //! * `PGSERVICEFILE` - Name of the service file.
 //! * `PGHOST` - behaves the same as the `host` connection parameter.
 //! * `PGPORT` - behaves the same as the `port` connection parameter.
-//! * `PGDATABASE` - behaves the same as the `database` connection parameter.
+//! * `PGDATABASE` - behaves the same as the `dbname` connection parameter.
 //! * `PGUSER` - behaves the same as the user connection parameter.
-//! * `PGPASSFILE` - Specifies the name of the file used to store password.
 //! * `PGOPTIONS` - behaves the same as the `options` parameter.
 //! * `PGAPPNAME` - behaves the same as the `application_name` connection parameter.
 //! * `PGCONNECT_TIMEOUT` - behaves the same as the `connect_timeout` connection parameter.
+//! * `PGPASSFILE` - Specifies the name of the file used to store password.
+//!
+//! ## Example
+//!
+//! ```no_run
+//! use pg_config::load_pg_config;
+//!
+//! let config = load_pg_config(Some("service=myservice")).unwrap();
+//! println!("{config:#?}");
+//! ```
 //!
 //! ## See also
 //!
@@ -27,6 +36,17 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::Duration;
 use tokio_postgres::config::{ChannelBinding, Config, SslMode};
+
+#[cfg(all(target_family = "unix", feature = "with-passfile"))]
+mod passfile;
+
+#[cfg(not(all(target_family = "unix", feature = "with-passfile")))]
+mod passfile {
+    use super::*;
+    pub(crate) fn get_password_from_passfile(_: &mut Config) -> Result<()> {
+        Ok(())
+    }
+}
 
 /// Error while parsing service file or
 /// retrieving parameter from environment
@@ -56,6 +76,10 @@ pub enum Error {
     MissingServiceName,
     #[error("Postgres config error")]
     PostgresConfig(#[from] tokio_postgres::Error),
+    #[error("Invalid passfile mode")]
+    InvalidPassFileMode,
+    #[error("Error parsing passfile")]
+    PassfileParseError,
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -81,17 +105,14 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 ///
 pub fn load_pg_config(config: Option<&str>) -> Result<Config> {
     fn load_config(service: &str, cnxstr: &str) -> Result<Config> {
-        if cnxstr.is_empty() {
-            let mut config = Config::new();
-            load_config_from_service(&mut config, service)?;
-            load_config_from_env(&mut config)?;
-            Ok(config)
+        let mut config = if cnxstr.is_empty() {
+            Config::new()
         } else {
-            let mut config = Config::from_str(cnxstr)?;
-            load_config_from_service(&mut config, service)?;
-            load_config_from_env(&mut config)?;
-            Ok(config)
-        }
+            Config::from_str(cnxstr)?
+        };
+        load_config_from_service(&mut config, service)?;
+        load_config_from_env(&mut config)?;
+        Ok(config)
     }
 
     if let Some(cnxstr) = config {
@@ -126,9 +147,16 @@ pub fn load_pg_config(config: Option<&str>) -> Result<Config> {
         load_config_from_env(&mut config)?;
         Ok(config)
     }
+    .and_then(|mut config| {
+        if config.get_password().is_none() {
+            passfile::get_password_from_passfile(&mut config)?;
+            eprintln!("=====> {:?}", config);
+        }
+        Ok(config)
+    })
 }
 
-/// Load connection parameters from config_file
+/// Load connection parameters from service config_file
 fn load_config_from_service(config: &mut Config, service_name: &str) -> Result<()> {
     fn user_service_file() -> Option<PathBuf> {
         std::env::var("PGSERVICEFILE")
@@ -160,7 +188,9 @@ fn load_config_from_service(config: &mut Config, service_name: &str) -> Result<(
                     }
                 })
         } else {
-            Err(Error::PgServiceFileNotFound(path.to_string_lossy().into_owned()))
+            Err(Error::PgServiceFileNotFound(
+                path.to_string_lossy().into_owned(),
+            ))
         }
     }
 

@@ -12,3 +12,6 @@ thiserror = "1.0"
 rust-ini = "0.18"
 tokio-postgres = "0.7"
 
+[features]
+default=["with-passfile"]
+with-passfile = []

@@ -31,6 +31,8 @@ async fn main() -> Result<()> {
 
     evl.listen(&args.event).await?;
 
+    println!("\n>>> Waiting for events <<<\n");
+
     while let Some(event) = evl.recv().await {
         println!("===> RECEIVED EVENT");
         println! {"{event:#?}"};
