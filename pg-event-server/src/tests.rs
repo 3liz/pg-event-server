@@ -2,7 +2,7 @@
 //! Unit tests
 //!
 use env_logger;
-use std::{env, path::Path, sync::Once};
+use std::sync::Once;
 
 static INIT: Once = Once::new();
 
