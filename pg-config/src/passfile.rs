@@ -79,7 +79,7 @@ pub(crate) fn get_password_from_passfile(config: &mut Config) -> Result<()> {
                         ControlFlow::Continue(())
                     } else {
                         match get_password(l, config) {
-                            Err(err) => ControlFlow::Break(Err(Error::from(err))),
+                            Err(err) => ControlFlow::Break(Err(err)),
                             Ok(Some(pwd)) => {
                                 config.password(pwd);
                                 ControlFlow::Break(Ok(()))

@@ -1,3 +1,5 @@
 [server]
 title = "Test server"
 listen = "127.0.0.1:8888"
+
+[postgres_tls]

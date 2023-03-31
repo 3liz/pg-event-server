@@ -14,6 +14,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::errors::{Error, Result};
+use crate::tls::postgres_tls::PgTlsConfig;
 
 fn default_title() -> String {
     "Event Subscriber Service".into()
@@ -70,6 +71,9 @@ pub struct Config {
     /// Reconnection delay in seconds
     #[serde(default = "default_reconnection_delay")]
     pub reconnect_delay: u16,
+
+    /// Postgres tls configuration
+    pub postgres_tls: PgTlsConfig,
 }
 
 ///
@@ -151,6 +155,10 @@ impl Config {
             }
         }
         Ok(())
+    }
+
+    pub fn check(&self) -> Result<()> {
+        self.postgres_tls.check()
     }
 }
 

@@ -7,7 +7,7 @@
 pub enum Error {
     #[error("IO Error")]
     IO(#[from] std::io::Error),
-    #[error("Configuration Error")]
+    #[error("Invalid configuration file")]
     ConfigFormat(#[from] toml::de::Error),
     #[error("SystemTime error")]
     SystemTime(#[from] std::time::SystemTimeError),
@@ -19,6 +19,8 @@ pub enum Error {
     PostgresError(#[from] pg_event_listener::Error),
     #[error("Subscription do not exists")]
     SubscriptionNotFound,
+    #[error("Postgres TLS error: {0}")]
+    PostgresTlsError(String),
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;

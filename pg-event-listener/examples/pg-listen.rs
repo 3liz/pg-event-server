@@ -2,7 +2,7 @@
 //! Listen for pg event
 //!
 use pg_config::{load_pg_config, Result};
-use pg_event_listener::PgEventListener;
+use pg_event_listener::{PgEventListener, NoTls};
 
 use clap::{ArgAction, Parser};
 
@@ -25,7 +25,7 @@ async fn main() -> Result<()> {
 
     init_logger(args.verbose);
 
-    let mut evl = PgEventListener::connect(config).await?;
+    let mut evl = PgEventListener::connect(config, NoTls).await?;
 
     println!("CONNECTED({})\n{:#?}", evl.session_pid(), evl.config());
 

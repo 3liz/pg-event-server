@@ -113,7 +113,7 @@ impl EventDispatch {
     pub async fn connect(config: &Config) -> Result<Self> {
         let (tx, rx) = mpsc::channel(config.events_buffer_size);
         let reconnect_delay = config.reconnect_delay;
-        let mut pool = Pool::new(tx);
+        let mut pool = Pool::new(tx, config.postgres_tls.make_tls_connect()?);
 
         let mut channels = Vec::<Channel>::with_capacity(config.channels.len());
         for conf in config.channels.iter() {

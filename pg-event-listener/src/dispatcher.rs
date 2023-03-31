@@ -3,10 +3,15 @@
 //!
 use futures::{stream, StreamExt};
 use tokio::sync::mpsc;
-use tokio_postgres::{error::DbError, tls::NoTls, AsyncMessage, Client};
+use tokio_postgres::{
+    error::DbError, AsyncMessage, Client, Socket,
+    tls::{MakeTlsConnect, TlsConnect},    
+};
 
-use std::collections::HashSet;
+//use postgres_openssl::MakeTlsConnector;
+
 use crate::{Config, Error, Notification, Result};
+use std::collections::HashSet;
 
 /// Listener for Postgres events
 ///
@@ -25,15 +30,26 @@ pub struct PgEventDispatcher {
 
 impl PgEventDispatcher {
     /// Initialize a `PgEventDispatcher`
-    pub async fn connect(
+    pub async fn connect<T>(
         config: Config, 
         tx: mpsc::Sender<Notification>,
-    ) -> Result<Self> {
-        let (client, mut conn) = config.connect(NoTls).await?;
+        tls: T, 
+    ) -> Result<Self> 
+    where
+        T: MakeTlsConnect<Socket> + Clone + Sync + Send + 'static,
+        T::Stream: Sync + Send,
+        T::TlsConnect: Sync + Send,
+        <T::TlsConnect as TlsConnect<Socket>>::Future: Send,
+    {
+        // rustls Not working : does not use plaform certificates !
+        // https://docs.rs/rustls-native-certs/0.6.2/rustls_native_certs/
+        //let builder = rustls::ClientConfig::builder()
+        //        .with_safe_defaults()
+        //        .with_root_certificates(rustls::RootCertStore::empty())
+        //        .with_no_client_auth();
+        //let tls = tokio_postgres_rustls::MakeRustlsConnect::new(builder);
 
-        // Create a stream from connection polling
-        // see https://docs.rs/futures/latest/futures/stream/fn.poll_fn.html
-        let mut stream = stream::poll_fn(move |cx| conn.poll_message(cx));
+        let (client, mut conn) = config.connect(tls).await?;
 
         let sender = tx.clone();
 
@@ -41,6 +57,10 @@ impl PgEventDispatcher {
         // connection will close when the client will be dropped
         // or if an error occurs and the
         tokio::spawn(async move {
+            // Create a stream from connection polling
+            // see https://docs.rs/futures/latest/futures/stream/fn.poll_fn.html
+            let mut stream = stream::poll_fn(move |cx| conn.poll_message(cx));
+
             loop {
                 if let Some(msg) = stream.next().await {
                     match msg {
@@ -97,37 +117,38 @@ impl PgEventDispatcher {
             .map_err(Error::from)
     }
 
-    /// Listen for multiple events 
-    pub async fn batch_listen<T>(&mut self, events: T) -> Result<()> 
+    /// Listen for multiple events
+    pub async fn batch_listen<T>(&mut self, events: T) -> Result<()>
     where
-        T: IntoIterator<Item=String>
+        T: IntoIterator<Item = String>,
     {
         let mut query: String = "".into();
         // Build a batch query
-        self.events.extend(
-            events.into_iter()
-                .map(|s| {
-                    query += "LISTEN ";
-                    query += &s;
-                    query += ";";
-                    s
-                })
-        );
+        self.events.extend(events.into_iter().map(|s| {
+            query += "LISTEN ";
+            query += &s;
+            query += ";";
+            s
+        }));
         if !query.is_empty() {
-            self.client
-                .batch_execute(&query)
-                .await
-                .map_err(Error::from)
+            self.client.batch_execute(&query).await.map_err(Error::from)
         } else {
             Ok(())
         }
     }
 
     /// Reconnect listener with its config
-    pub async fn respawn(&mut self) -> Result<()> {
+    pub async fn respawn<T>(&mut self, tls: T) -> Result<()> 
+    where
+        T: MakeTlsConnect<Socket> + Clone + Sync + Send + 'static,
+        T::Stream: Sync + Send,
+        T::TlsConnect: Sync + Send,
+        <T::TlsConnect as TlsConnect<Socket>>::Future: Send,
+
+    {
         let config = self.config.clone();
         let events = self.events.drain().collect::<Vec<_>>();
-        *self = Self::connect(config, self.tx.clone()).await?;
+        *self = Self::connect(config, self.tx.clone(), tls).await?;
         self.batch_listen(events).await
     }
 

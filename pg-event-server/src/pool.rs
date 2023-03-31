@@ -5,6 +5,7 @@ use futures::future;
 use pg_event_listener::{Config, Notification, PgEventDispatcher};
 use tokio::sync::mpsc;
 
+use crate::tls::postgres_tls::PgTlsConnect;
 use crate::{config::ChannelConfig, Result};
 
 #[derive(Debug, Clone)]
@@ -28,12 +29,17 @@ impl PgNotificationDispatch {
 pub struct Pool {
     pool: Vec<PgEventDispatcher>,
     tx: mpsc::Sender<PgNotificationDispatch>,
+    tls: PgTlsConnect,
 }
 
 impl Pool {
     /// Create a new Pool that will forwrad notification to `tx`
-    pub fn new(tx: mpsc::Sender<PgNotificationDispatch>) -> Self {
-        Self { pool: vec![], tx }
+    pub fn new(tx: mpsc::Sender<PgNotificationDispatch>, tls: PgTlsConnect) -> Self {
+        Self {
+            pool: vec![],
+            tx,
+            tls,
+        }
     }
 
     /// Handle reconnection
@@ -44,7 +50,7 @@ impl Pool {
 
         let _ = future::join_all(self.pool.iter_mut().map(|dispatcher| async {
             if dispatcher.is_closed() {
-                if let Err(err) = dispatcher.respawn().await {
+                if let Err(err) = dispatcher.respawn(self.tls.clone()).await {
                     let conf = dispatcher.config();
                     log::error!(
                         "Failed to reconnect to database {} on {:?}: {:?}",
@@ -69,7 +75,7 @@ impl Pool {
     /// Spaw a new dispatcher task
     async fn start_dispatcher(&self, config: Config) -> Result<PgEventDispatcher> {
         let (tx, mut rx) = mpsc::channel(1);
-        let dispatcher = PgEventDispatcher::connect(config, tx).await?;
+        let dispatcher = PgEventDispatcher::connect(config, tx, self.tls.clone()).await?;
 
         let dispatch_id = dispatcher.session_pid();
         let tx_fwd = self.tx.clone();

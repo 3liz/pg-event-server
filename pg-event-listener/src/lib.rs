@@ -10,7 +10,10 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 use tokio::sync::mpsc;
 
-pub use tokio_postgres::{config::Config, Notification};
+pub use tokio_postgres::{
+    config::Config, Notification, 
+    tls::{MakeTlsConnect, TlsConnect, NoTls}, Socket
+};
 
 /// Listener for Postgres events
 ///
@@ -23,9 +26,15 @@ pub struct PgEventListener {
 
 impl PgEventListener {
     /// Initialize a `PgEventListener`
-    pub async fn connect(config: Config) -> Result<Self> {
+    pub async fn connect<T>(config: Config, tls: T) -> Result<Self> 
+    where
+        T: MakeTlsConnect<Socket> + Clone + Sync + Send + 'static,
+        T::Stream: Sync + Send,
+        T::TlsConnect: Sync + Send,
+        <T::TlsConnect as TlsConnect<Socket>>::Future: Send,
+    {
         let (tx, rx) = mpsc::channel(16);
-        let dispatcher = PgEventDispatcher::connect(config, tx).await?;
+        let dispatcher = PgEventDispatcher::connect(config, tx, tls).await?;
         Ok(Self { dispatcher, rx })
     }
 
