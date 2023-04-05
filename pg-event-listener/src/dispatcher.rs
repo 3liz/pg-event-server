@@ -8,8 +8,6 @@ use tokio_postgres::{
     tls::{MakeTlsConnect, TlsConnect},    
 };
 
-//use postgres_openssl::MakeTlsConnector;
-
 use crate::{Config, Error, Notification, Result};
 use std::collections::HashSet;
 
@@ -41,14 +39,6 @@ impl PgEventDispatcher {
         T::TlsConnect: Sync + Send,
         <T::TlsConnect as TlsConnect<Socket>>::Future: Send,
     {
-        // rustls Not working : does not use plaform certificates !
-        // https://docs.rs/rustls-native-certs/0.6.2/rustls_native_certs/
-        //let builder = rustls::ClientConfig::builder()
-        //        .with_safe_defaults()
-        //        .with_root_certificates(rustls::RootCertStore::empty())
-        //        .with_no_client_auth();
-        //let tls = tokio_postgres_rustls::MakeRustlsConnect::new(builder);
-
         let (client, mut conn) = config.connect(tls).await?;
 
         let sender = tx.clone();
