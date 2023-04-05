@@ -3,6 +3,10 @@ name = "pg-event-server"
 version = "0.1.0"
 edition = "2021"
 description = "Postgres NOTIFY/SSE server"
+authors = ["David Marteau <dmarteau@3liz.com>"]
+repository = "https://github.com/3liz/pg-event-server"
+readme = "../README.md"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 pg-event-listener = { path = "../pg-event-listener" }

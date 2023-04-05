@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 authors = ["David Marteau <dmarteau@3liz.com>"]
 description = "Parse Postgres service configuration files and more"
-readme = "Readme.md"
 keywords = [ "database", "sql", "postgres", "postgresql" ]
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 thiserror = "1.0"
