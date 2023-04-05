@@ -17,8 +17,9 @@ mod errors;
 mod events;
 mod landingpage;
 mod pool;
+mod postgres;
+mod server;
 mod subscribe;
-mod tls;
 mod utils;
 
 use subscribe::Broadcaster;
@@ -57,7 +58,7 @@ use tokio::sync::watch::{self, Receiver, Sender};
 // Event dispatcher
 //
 async fn start_event_dispatcher(tx: Sender<Event>, conf: config::Config) -> Result<()> {
-    let dispatcher = EventDispatch::connect(&conf).await?;
+    let dispatcher = EventDispatch::connect(&conf.settings).await?;
     // Start dispatching
     actix_web::rt::spawn(async move {
         dispatcher
@@ -90,7 +91,10 @@ fn start_event_listener(bc: Rc<Broadcaster>, mut rx: Receiver<Event>) {
 //
 #[actix_web::main]
 async fn main() -> Result<()> {
-    use actix_web::{middleware::Logger, web, App, HttpServer};
+    use actix_web::{
+        middleware::{DefaultHeaders, Logger},
+        web, App, HttpServer,
+    };
 
     let args = Cli::parse();
 
@@ -104,31 +108,37 @@ async fn main() -> Result<()> {
         });
     }
 
-    let bind_address = conf.server.listen.clone();
-    let worker_buffer_size = conf.worker_buffer_size;
-    let channels = conf
+    let settings = &conf.settings;
+
+    let title = settings.server.title.clone();
+    let bind_address = settings.server.listen.clone();
+    let worker_buffer_size = settings.worker_buffer_size;
+    let channels = settings
         .channels
         .iter()
         .map(|c| c.id.clone())
         .collect::<Vec<_>>();
-    let num_workers = conf
+    let num_workers = settings
         .server
         .num_workers
         .unwrap_or_else(num_cpus::get_physical);
 
     eprintln!("Starting pg event server on: {}", bind_address);
 
+    let tls_config = settings.server.make_tls_config()?;
+
     let (tx, rx) = watch::channel(Event::default());
 
     start_event_dispatcher(tx, conf).await?;
 
-    HttpServer::new(move || {
+    let server = HttpServer::new(move || {
         let broadcaster = Rc::new(Broadcaster::new(worker_buffer_size, channels.clone()));
 
         start_event_listener(broadcaster.clone(), rx.clone());
 
         App::new()
             .wrap(Logger::default())
+            .wrap(DefaultHeaders::new().add(("Server", title.as_str())))
             .service(
                 web::resource("/")
                     .name("landing_page")
@@ -142,8 +152,13 @@ async fn main() -> Result<()> {
                         web::get().to(Broadcaster::do_subscribe),
                     ),
             )
-    })
-    .bind(&bind_address)?
+    });
+
+    if let Some(tls_config) = tls_config {
+        server.bind_rustls(&bind_address, tls_config)?
+    } else {
+        server.bind(&bind_address)?
+    }
     .workers(num_workers)
     .run()
     .await
@@ -155,8 +170,36 @@ async fn main() -> Result<()> {
 //
 fn init_logger(verbose: u8) {
     use env_logger::Env;
+    use std::io::Write;
 
-    let mut builder = env_logger::Builder::from_env(Env::default().default_filter_or("info"));
+    let mut builder = env_logger::Builder::from_env(
+        Env::new()
+            .filter("PG_EVENT_SERVER_LOG")
+            .default_filter_or("info"),
+    );
+
+    if verbose > 0 {
+        builder.format(|buf, record| {
+            writeln!(
+                buf,
+                "{} {:5} [{}] {}",
+                buf.timestamp(),
+                record.level(),
+                record.module_path().unwrap_or_default(),
+                record.args()
+            )
+        });
+    } else {
+        builder.format(|buf, record| {
+            writeln!(
+                buf,
+                "{} {:5} {}",
+                buf.timestamp(),
+                record.level(),
+                record.args()
+            )
+        });
+    }
 
     match verbose {
         1 => builder.filter_level(LevelFilter::Debug),

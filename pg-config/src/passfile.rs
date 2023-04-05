@@ -13,9 +13,14 @@ use tokio_postgres::config::Host;
 /// then check in $HOME/.pgpass
 fn get_passfile() -> Option<PathBuf> {
     std::env::var("PGPASSFILE")
-        .map(|path| Path::new(&path).into())
-        .or_else(|_| std::env::var("HOME").map(|path| Path::new(&path).join(".pgpass")))
         .ok()
+        .map(|path| Path::new(&path).into())
+        .or_else(|| {
+            std::env::var("HOME").ok().and_then(|path| {
+                let path = Path::new(&path).join(".pgpass");
+                path.as_path().exists().then_some(path)
+            })
+        })
 }
 
 /// Match host value
@@ -62,6 +67,9 @@ pub(crate) fn get_password_from_passfile(config: &mut Config) -> Result<()> {
     if let Some(path) = get_passfile() {
         // Check permission
         let path = path.as_path();
+        if !path.exists() {
+            return Err(Error::PgPassFileNotFound(format!("{path:?}")));
+        }
 
         if fs::metadata(path)?.permissions().mode() & 0o7777 != 0o600 {
             return Err(Error::InvalidPassFileMode);

@@ -5,7 +5,7 @@ use futures::future;
 use pg_event_listener::{Config, Notification, PgEventDispatcher};
 use tokio::sync::mpsc;
 
-use crate::tls::postgres_tls::PgTlsConnect;
+use crate::postgres::tls::PgTlsConnect;
 use crate::{config::ChannelConfig, Result};
 
 #[derive(Debug, Clone)]
@@ -116,7 +116,11 @@ impl Pool {
         }
 
         // Created postgres configuration
-        log::debug!("Loading configuration channel for {}", conf.id);
+        log::debug!(
+            "Loading configuration channel for {}: {}",
+            conf.id,
+            &conf.connection_string
+        );
         let pgconfig = pg_config::load_pg_config(Some(&conf.connection_string))?;
         match self
             .pool

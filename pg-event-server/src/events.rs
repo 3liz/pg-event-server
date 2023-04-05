@@ -15,7 +15,7 @@ use pg_event_listener::Notification;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
-use crate::config::Config;
+use crate::config::Settings;
 
 pub type ChanId = usize;
 
@@ -110,13 +110,13 @@ impl EventDispatch {
     ///
     /// `buffer` is the channel buffer size:
     /// see [`tokio::sync::mpsc::channel`]
-    pub async fn connect(config: &Config) -> Result<Self> {
-        let (tx, rx) = mpsc::channel(config.events_buffer_size);
-        let reconnect_delay = config.reconnect_delay;
-        let mut pool = Pool::new(tx, config.postgres_tls.make_tls_connect()?);
+    pub async fn connect(settings: &Settings) -> Result<Self> {
+        let (tx, rx) = mpsc::channel(settings.events_buffer_size);
+        let reconnect_delay = settings.reconnect_delay;
+        let mut pool = Pool::new(tx, settings.postgres_tls.make_tls_connect()?);
 
-        let mut channels = Vec::<Channel>::with_capacity(config.channels.len());
-        for conf in config.channels.iter() {
+        let mut channels = Vec::<Channel>::with_capacity(settings.channels.len());
+        for conf in settings.channels.iter() {
             // Create postgres configuration
             // TODO Make sure that a channel with the same id does not already
             // exists.

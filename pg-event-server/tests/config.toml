@@ -1,5 +1,20 @@
 [server]
-title = "Test server"
+# Title that will appear in the 'Server' header
+title = "Pg event test server"
 listen = "127.0.0.1:8888"
 
+ssl_enabled = true
+ssl_key_file = "certs/cert.key"
+ssl_cert_file = "certs/cert.pem"
+
 [postgres_tls]
+
+# CA file for remote server
+#tls_ca_file =
+# Client authentification key file
+# to present to remote server
+#tls_client_auth_key =
+# Client authentification cert file
+# to present to remote server
+#tls_client_auth_cert =
+

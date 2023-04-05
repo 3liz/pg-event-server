@@ -80,6 +80,8 @@ pub enum Error {
     InvalidPassFileMode,
     #[error("Error parsing passfile")]
     PassfileParseError,
+    #[error("Pass file not found: {0}")]
+    PgPassFileNotFound(String),
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -150,7 +152,6 @@ pub fn load_pg_config(config: Option<&str>) -> Result<Config> {
     .and_then(|mut config| {
         if config.get_password().is_none() {
             passfile::get_password_from_passfile(&mut config)?;
-            eprintln!("=====> {:?}", config);
         }
         Ok(config)
     })
