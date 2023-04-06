@@ -3,9 +3,13 @@ name = "pg-config"
 version = "0.1.0"
 edition = "2021"
 authors = ["David Marteau <dmarteau@3liz.com>"]
-description = "Parse Postgres service configuration files and more"
-keywords = [ "database", "sql", "postgres", "postgresql" ]
 license = "MIT OR Apache-2.0"
+description = "Support for Postgres service configuration files and environment variables"
+homepage = "https://github.com/3liz/pg-event-server/"
+keywords = [ "database", "sql", "postgres", "postgresql" ]
+repository = "https://github.com/3liz/pg-event-server/"
+documentation = "https://docs.rs/pg-config/"
+readme = "./README.md"
 
 [dependencies]
 thiserror = "1.0"

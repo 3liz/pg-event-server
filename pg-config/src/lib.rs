@@ -16,6 +16,10 @@
 //! * `PGCONNECT_TIMEOUT` - behaves the same as the `connect_timeout` connection parameter.
 //! * `PGPASSFILE` - Specifies the name of the file used to store password.
 //!
+//! ## Passfile support 
+//!
+//! Passfile is actually supported only on linux platform
+//!
 //! ## Example
 //!
 //! ```no_run
