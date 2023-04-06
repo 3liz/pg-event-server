@@ -23,9 +23,9 @@
 //! ## Example
 //!
 //! ```no_run
-//! use pg_config::load_pg_config;
+//! use pg_client_config::load_config;
 //!
-//! let config = load_pg_config(Some("service=myservice")).unwrap();
+//! let config = load_config(Some("service=myservice")).unwrap();
 //! println!("{config:#?}");
 //! ```
 //!
@@ -109,8 +109,8 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 ///
 /// In all cases, parameters from the connection string take precedence.
 ///
-pub fn load_pg_config(config: Option<&str>) -> Result<Config> {
-    fn load_config(service: &str, cnxstr: &str) -> Result<Config> {
+pub fn load_config(config: Option<&str>) -> Result<Config> {
+    fn load_service_config(service: &str, cnxstr: &str) -> Result<Config> {
         let mut config = if cnxstr.is_empty() {
             Config::new()
         } else {
@@ -130,14 +130,14 @@ pub fn load_pg_config(config: Option<&str>) -> Result<Config> {
                 tail.split_once(|c: char| c.is_whitespace())
                     .unwrap_or((tail, ""))
             }) {
-                load_config(service, tail.trim())
+                load_service_config(service, tail.trim())
             } else {
                 Err(Error::MissingServiceName)
             }
         } else if let Ok(service) = std::env::var("PGSERVICE") {
             // Service file defined
             // But overridable from connection string
-            load_config(&service, cnxstr)
+            load_service_config(&service, cnxstr)
         } else {
             // No service defined
             let mut config = Config::from_str(cnxstr)?;
@@ -145,7 +145,7 @@ pub fn load_pg_config(config: Option<&str>) -> Result<Config> {
             Ok(config)
         }
     } else if let Ok(service) = std::env::var("PGSERVICE") {
-        load_config(&service, "")
+        load_service_config(&service, "")
     } else {
         // No service defined
         // Initialize from env vars.
@@ -335,7 +335,7 @@ mod tests {
         std::env::set_var("PGDATABASE", "foodb");
         std::env::set_var("PGPORT", "1234");
 
-        let config = load_pg_config(None).unwrap();
+        let config = load_config(None).unwrap();
 
         assert_eq!(config.get_user(), Some("foo"));
         assert_eq!(config.get_ports(), [1234]);
@@ -353,7 +353,7 @@ mod tests {
                 .unwrap(),
         );
 
-        let config = load_pg_config(Some("service=bar")).unwrap();
+        let config = load_config(Some("service=bar")).unwrap();
 
         assert_eq!(config.get_user(), Some("bar"));
         assert_eq!(config.get_ports(), [1234]);
@@ -371,7 +371,7 @@ mod tests {
                 .unwrap(),
         );
 
-        let config = load_pg_config(Some("service=bar user=baz")).unwrap();
+        let config = load_config(Some("service=bar user=baz")).unwrap();
 
         assert_eq!(config.get_user(), Some("baz"));
     }

@@ -1,5 +1,5 @@
 [package]
-name = "pg-config"
+name = "pg-client-config"
 version = "0.1.0"
 edition = "2021"
 authors = ["David Marteau <dmarteau@3liz.com>"]
@@ -8,7 +8,7 @@ description = "Support for Postgres service configuration files and environment 
 homepage = "https://github.com/3liz/pg-event-server/"
 keywords = [ "database", "sql", "postgres", "postgresql" ]
 repository = "https://github.com/3liz/pg-event-server/"
-documentation = "https://docs.rs/pg-config/"
+documentation = "https://docs.rs/pg-client-config/"
 readme = "./README.md"
 
 [dependencies]

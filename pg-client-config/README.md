@@ -24,9 +24,9 @@ Passfile is actually supported only on linux platform
 ## Example
 
 ```
-use pg_config::load_pg_config;
+use pg_client_config::load_config;
 
-let config = load_pg_config(Some("service=myservice")).unwrap();
+let config = load_config(Some("service=myservice")).unwrap();
 println!("{config:#?}");
 ```
 

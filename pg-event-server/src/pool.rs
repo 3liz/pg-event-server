@@ -121,7 +121,7 @@ impl Pool {
             conf.id,
             &conf.connection_string
         );
-        let pgconfig = pg_config::load_pg_config(Some(&conf.connection_string))?;
+        let pgconfig = pg_client_config::load_config(Some(&conf.connection_string))?;
         match self
             .pool
             .iter_mut()

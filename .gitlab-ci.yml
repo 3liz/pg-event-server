@@ -14,8 +14,8 @@ test:
   stage: test
   image: registry.snap.lizlan:5000/factory-ci-runner:rust
   script:
-    - cp pg-config/fixtures/passfile.conf.in pg-config/fixtures/passfile.conf
-    - chmod 0600 pg-config/fixtures/passfile.conf
+    - cp pg-client-config/fixtures/passfile.conf.in pg-client-config/fixtures/passfile.conf
+    - chmod 0600 pg-client-config/fixtures/passfile.conf
     - cargo test
   environment:
     name: snap

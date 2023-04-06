@@ -14,7 +14,7 @@ pub enum Error {
     #[error("Config error")]
     Config(String),
     #[error("Postgres connection error")]
-    PostgresConnection(#[from] pg_config::Error),
+    PostgresConnection(#[from] pg_client_config::Error),
     #[error("Postgres error")]
     PostgresError(#[from] pg_event_listener::Error),
     #[error("Subscription do not exists")]

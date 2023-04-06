@@ -1,7 +1,7 @@
 //!
 //! Listen for pg event
 //!
-use pg_config::{load_pg_config, Result};
+use pg_client_config::{load_config, Result};
 use pg_event_listener::{PgEventListener, NoTls};
 
 use clap::{ArgAction, Parser};
@@ -21,7 +21,7 @@ struct Cli {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Cli::parse();
-    let config = load_pg_config(Some(&args.config))?;
+    let config = load_config(Some(&args.config))?;
 
     init_logger(args.verbose);
 

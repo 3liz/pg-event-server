@@ -3,5 +3,5 @@
 members = [
   "pg-event-server",
   "pg-event-listener",
-  "pg-config",
+  "pg-client-config",
 ]

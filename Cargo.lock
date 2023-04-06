@@ -1120,7 +1120,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "478c572c3d73181ff3c2539045f6eb99e5491218eae919370993b890cdbdd98e"
 
 [[package]]
-name = "pg-config"
+name = "pg-client-config"
 version = "0.1.0"
 dependencies = [
  "rust-ini",
@@ -1136,7 +1136,7 @@ dependencies = [
  "env_logger",
  "futures",
  "log",
- "pg-config",
+ "pg-client-config",
  "thiserror",
  "tokio",
  "tokio-postgres",
@@ -1155,7 +1155,7 @@ dependencies = [
  "lazy_static",
  "log",
  "num_cpus",
- "pg-config",
+ "pg-client-config",
  "pg-event-listener",
  "rustls",
  "rustls-native-certs",

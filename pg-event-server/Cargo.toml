@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 pg-event-listener = { path = "../pg-event-listener" }
-pg-config = { path = "../pg-config" }
+pg-client-config = { path = "../pg-client-config" }
 tokio-postgres = "0.7"
 actix-web = { version = "4", features=["rustls"] }
 actix-web-lab = "0.19"
