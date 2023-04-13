@@ -115,13 +115,16 @@ impl Pool {
             Ok(())
         }
 
+        let connection_string = conf.connection_string.as_deref();
+
         // Created postgres configuration
         log::debug!(
             "Loading configuration channel for {}: {}",
             conf.id,
-            &conf.connection_string
+            connection_string.unwrap_or("<no connection string>")
         );
-        let pgconfig = pg_client_config::load_config(Some(&conf.connection_string))?;
+
+        let pgconfig = pg_client_config::load_config(connection_string)?;
         match self
             .pool
             .iter_mut()

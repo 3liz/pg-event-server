@@ -56,12 +56,9 @@ Configuration is in ["toml"](https://github.com/toml-lang/toml/wiki) format.
 * `tls_client_auth_cert` - Path to cert file containing the client authentification 
    cert to present to remote server
 
-### Postgres channel configuration files
+### `[[channel]]`
 
-Postgres channel configurations are searched in the `<config_name>.d` directory located
-at the same lever as the configuration file `<config_name>.toml`.
-
-All files ending by `.toml` will be loaded for channel configuration.
+Postgres channel configuration.
 
 A channel configuration has the following format: 
 
@@ -72,17 +69,17 @@ allowed_events = ["foo", "bar", "baz"]
 connection_string = "service=local"
 ```
 
-There could by any channel as you want in one file, and as many configuration 
-file as desired.
+There is no limit in the number of channels that can de declared in the
+configuration.
 
 #### Channel parameters
 
 * `id` - The identification of the channel: it should be formatted as a valid path.
          The `id` will be used as the subscription path for clients. 
-* `allowed_events` - The events that wil be forwarded the client listening to that
-   channel.
+* `allowed_events` - Optional - The list of events that will be forwarded 
+   to the client listening to that channel. If not present, all events will be forwarded.
 * `connection_string` - The postgres connection string. The format of the connection 
-   follow the forme described [here](https://docs.rs/tokio-postgres/latest/tokio_postgres/config/struct.Config.html). 
+   follow the forme described [here](https://docs.rs/tokio-postgres/latest/tokio_postgres/config/struct.Config.html).
    If the connection string *starts* with "service=" then the corresponding service
    will be searched using the same rules as used for service in [libpq](https://docs.postgresql.fr/10/libpq-pgservice.html)
 
@@ -100,6 +97,12 @@ Furthemore the following environment variables are supported:
 * `PGCONNECT_TIMEOUT` - behaves the same as the `connect_timeout` connection parameter.
 * `PGPASSFILE` - Specifies the name of the file used to store password.
 
+### Postgres channel configurations in separate files
+
+Multiple channel configurations will be searched in the `<config_name>.d` directory located
+at the same lever as the configuration file `<config_name>.toml`.
+
+All files ending by `.toml` will be loaded for channel configuration.
 
 ### Subscription url
 

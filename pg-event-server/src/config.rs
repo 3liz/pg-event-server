@@ -141,9 +141,12 @@ pub struct ChannelConfig {
     /// Used in subscription request
     pub id: String,
     /// List of events allowed to subscribe to
+    /// If no events are defined then *all* events
+    /// are allowed.
+    #[serde(default)]
     pub allowed_events: Vec<String>,
     /// Connection string
-    pub connection_string: String,
+    pub connection_string: Option<String>,
 }
 
 impl ChannelConfig {

@@ -89,7 +89,8 @@ impl Channel {
     /// Return true if that Channel is listening
     /// for `event`
     pub fn is_listening_for(&self, dispatch_id: i32, event: &str) -> bool {
-        self.dispatch_id == dispatch_id && self.events.iter().any(|e| *e == event)
+        self.dispatch_id == dispatch_id
+            && (self.events.is_empty() || self.events.iter().any(|e| *e == event))
     }
 }
 
