@@ -287,6 +287,11 @@ fn set_parameter(config: &mut Config, k: &str, v: &str) -> Result<()> {
                 config.port(v.parse().map_err(|_| Error::InvalidPort(v.into()))?);
             }
         }
+        "application_name" => {
+            if config.get_application_name().is_none() {
+                config.application_name(v);
+            }
+        }
         "connect_timeout" => {
             if config.get_connect_timeout().is_none() {
                 config.connect_timeout(Duration::from_secs(
