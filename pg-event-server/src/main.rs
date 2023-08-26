@@ -46,7 +46,8 @@ struct Cli {
 }
 
 //
-// Define 1 to N communication channel
+// Define M to N communication channel with 
+// tokio::async::watch
 //
 // The dispatcher will run in the main thread.
 // Each worker will run a listener that will

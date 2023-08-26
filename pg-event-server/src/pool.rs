@@ -1,6 +1,12 @@
 //!
 //! Handle Postgres connection pool
 //!
+//! Maintains a pool of event dispatchers for each distinct database connection 
+//! configuration.
+//!
+//! This allows us to use the same number of connections independently
+//! of the number of workers used.
+//!
 use futures::future;
 use pg_event_listener::{Config, Notification, PgEventDispatcher};
 use tokio::sync::mpsc;
@@ -33,7 +39,7 @@ pub struct Pool {
 }
 
 impl Pool {
-    /// Create a new Pool that will forwrad notification to `tx`
+    /// Create a new Pool that will forward notification to `tx`
     pub fn new(tx: mpsc::Sender<PgNotificationDispatch>, tls: PgTlsConnect) -> Self {
         Self {
             pool: vec![],
