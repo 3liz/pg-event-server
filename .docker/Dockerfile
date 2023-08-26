@@ -1,6 +1,6 @@
 ARG REGISTRY_PREFIX=''
 
-FROM ${REGISTRY_PREFIX}rust:1.68-slim-bullseye as builder
+FROM ${REGISTRY_PREFIX}rust:1-slim-bullseye as builder
 
 WORKDIR /usr/src/
 COPY . .
