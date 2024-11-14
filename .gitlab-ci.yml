@@ -12,7 +12,7 @@ cache:
 
 test:
   stage: test
-  image: registry.snap.lizlan:5000/factory-ci-runner:rust
+  image: ${REGISTRY_URL}/factory-ci-runner:rust-bullseye
   script:
     - cp pg-client-config/fixtures/passfile.conf.in pg-client-config/fixtures/passfile.conf
     - chmod 0600 pg-client-config/fixtures/passfile.conf
@@ -23,6 +23,7 @@ test:
     - infrav3-plain
 
 dev:docker:
+  image: ${REGISTRY_URL}/factory-ci-runner:build-package
   stage: build
   script:
     - make -C .docker build deliver
@@ -39,7 +40,7 @@ release:docker:
   stage: release
   script: 
     - make -C .docker build deliver
-    - $FACTORY_SCRIPTS/release-image.sh pg-event-server
+    - release-image pg-event-server
   environment:
     name: production
   artifacts:
@@ -56,7 +57,7 @@ release:docker:
 
 package:deb:
   stage: release
-  image: registry.snap.lizlan:5000/factory-ci-runner:rust
+  image: ${REGISTRY_URL}/factory-ci-runner:rust-bullseye
   script:
     - cargo deb -p pg-event-server
     - cp -v target/debian/*.deb /srv/storage/debs/
