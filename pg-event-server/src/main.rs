@@ -46,14 +46,14 @@ struct Cli {
 }
 
 //
-// Define M to N communication channel with 
+// Define M to N communication channel with
 // tokio::async::watch
 //
 // The dispatcher will run in the main thread.
 // Each worker will run a listener that will
 // send the event on each SSE subsriber channel.
 //
-use events::{Event, EventDispatch};
+use crate::events::{Event, EventDispatch};
 use tokio::sync::watch::{self, Receiver, Sender};
 //
 // Event dispatcher
@@ -124,12 +124,11 @@ async fn main() -> Result<()> {
         .num_workers
         .unwrap_or_else(num_cpus::get_physical);
 
-    eprintln!("Starting pg event server on: {}", bind_address);
-
     let tls_config = settings.server.make_tls_config()?;
 
     let (tx, rx) = watch::channel(Event::default());
 
+    log::info!("Starting Event dispatcher");
     start_event_dispatcher(tx, conf).await?;
 
     let server = HttpServer::new(move || {
@@ -156,7 +155,7 @@ async fn main() -> Result<()> {
     });
 
     if let Some(tls_config) = tls_config {
-        server.bind_rustls(&bind_address, tls_config)?
+        server.bind_rustls_0_23(&bind_address, tls_config)?
     } else {
         server.bind(&bind_address)?
     }

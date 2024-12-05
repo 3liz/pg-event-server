@@ -13,6 +13,7 @@ use std::rc::Rc;
 use actix_web::{web, HttpRequest, Responder};
 use actix_web_lab::sse;
 use futures::future;
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::{
@@ -26,7 +27,7 @@ struct Channel {
     id: ChanId,
     path: String,
     ident: Uuid,
-    sender: sse::Sender,
+    sender: mpsc::Sender<sse::Event>,
     //timestamp: u64,
     realip_remote_addr: Option<String>,
     peer_addr: Option<String>,
@@ -97,7 +98,7 @@ impl Broadcaster {
         let realip_remote_addr = connection_info.realip_remote_addr().map(String::from);
         let peer_addr = connection_info.peer_addr().map(String::from);
 
-        let (tx, rx) = sse::channel(self.buffer_size);
+        let (tx, rx) = mpsc::channel(self.buffer_size);
         let chan = Channel {
             id,
             path: path.into(),
@@ -134,8 +135,7 @@ impl Broadcaster {
                 self.pending_subscriptions.borrow_mut().push(chan)
             }
         }
-
-        Ok(rx)
+        Ok(sse::Sse::from_infallible_receiver(rx))
     }
 
     /// Resolve pendings subscriptions that
@@ -164,7 +164,8 @@ impl Broadcaster {
             .send(
                 sse::Data::new(event.payload())
                     .id(event.id())
-                    .event(event.event()),
+                    .event(event.event())
+                    .into(),
             )
             .await;
 

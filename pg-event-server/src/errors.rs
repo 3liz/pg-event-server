@@ -16,11 +16,13 @@ pub enum Error {
     #[error("Postgres connection error")]
     PostgresConnection(#[from] pg_client_config::Error),
     #[error("Postgres error")]
-    PostgresError(#[from] pg_event_listener::Error),
+    Postgres(#[from] pg_event_listener::Error),
     #[error("Subscription do not exists")]
     SubscriptionNotFound,
     #[error("Postgres TLS error: {0}")]
-    PostgresTlsError(String),
+    PostgresTls(String),
+    #[error("Server TLS error: {0}")]
+    ServerTls(String),
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;

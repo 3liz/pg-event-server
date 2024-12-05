@@ -1,7 +1,7 @@
 //!
 //! Handle Postgres connection pool
 //!
-//! Maintains a pool of event dispatchers for each distinct database connection 
+//! Maintains a pool of event dispatchers for each distinct database connection
 //! configuration.
 //!
 //! This allows us to use the same number of connections independently
@@ -10,6 +10,7 @@
 use futures::future;
 use pg_event_listener::{Config, Notification, PgEventDispatcher};
 use tokio::sync::mpsc;
+use tokio_postgres::tls::NoTls;
 
 use crate::postgres::tls::PgTlsConnect;
 use crate::{config::ChannelConfig, Result};
@@ -35,12 +36,12 @@ impl PgNotificationDispatch {
 pub struct Pool {
     pool: Vec<PgEventDispatcher>,
     tx: mpsc::Sender<PgNotificationDispatch>,
-    tls: PgTlsConnect,
+    tls: Option<PgTlsConnect>,
 }
 
 impl Pool {
     /// Create a new Pool that will forward notification to `tx`
-    pub fn new(tx: mpsc::Sender<PgNotificationDispatch>, tls: PgTlsConnect) -> Self {
+    pub fn new(tx: mpsc::Sender<PgNotificationDispatch>, tls: Option<PgTlsConnect>) -> Self {
         Self {
             pool: vec![],
             tx,
@@ -56,7 +57,10 @@ impl Pool {
 
         let _ = future::join_all(self.pool.iter_mut().map(|dispatcher| async {
             if dispatcher.is_closed() {
-                if let Err(err) = dispatcher.respawn(self.tls.clone()).await {
+                if let Err(err) = match &self.tls {
+                    Some(tls) => dispatcher.respawn(tls.clone()).await,
+                    None => dispatcher.respawn(NoTls).await,
+                } {
                     let conf = dispatcher.config();
                     log::error!(
                         "Failed to reconnect to database {} on {:?}: {:?}",
@@ -81,8 +85,13 @@ impl Pool {
     /// Spaw a new dispatcher task
     async fn start_dispatcher(&self, config: Config) -> Result<PgEventDispatcher> {
         let (tx, mut rx) = mpsc::channel(1);
-        let dispatcher = PgEventDispatcher::connect(config, tx, self.tls.clone()).await?;
 
+        // XXX The connect method is generic and return different type of
+        // future.
+        let dispatcher = match &self.tls {
+            Some(tls) => PgEventDispatcher::connect(config, tx, tls.clone()).await?,
+            None => PgEventDispatcher::connect(config, tx, NoTls).await?,
+        };
         let dispatch_id = dispatcher.session_pid();
         let tx_fwd = self.tx.clone();
         // Wrap the event and forward it
@@ -101,11 +110,6 @@ impl Pool {
             }
             log::trace!("Forward task terminated for dispatcher {dispatch_id}.")
         });
-        log::debug!(
-            "Created Postgres event dispatcher for session {}: {:#?}",
-            dispatcher.session_pid(),
-            dispatcher.config()
-        );
         Ok(dispatcher)
     }
 
@@ -114,6 +118,7 @@ impl Pool {
     /// No new connection is created if a connection already exists which
     /// target the same host, user and database.
     pub async fn add_connection(&mut self, conf: &ChannelConfig) -> Result<i32> {
+        log::debug!("Adding connection to {:#?}", conf);
         async fn listen(dispatcher: &mut PgEventDispatcher, events: &[String]) -> Result<()> {
             for event in events.iter() {
                 dispatcher.listen(event).await?;

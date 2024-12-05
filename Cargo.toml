@@ -5,3 +5,4 @@ members = [
   "pg-event-listener",
   "pg-client-config",
 ]
+resolver = "2"

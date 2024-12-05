@@ -7,7 +7,7 @@ ssl_enabled = true
 ssl_key_file = "certs/cert.key"
 ssl_cert_file = "certs/cert.pem"
 
-[postgres_tls]
+#[postgres_tls]
 
 # CA file for remote server
 #tls_ca_file =

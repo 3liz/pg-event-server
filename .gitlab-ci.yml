@@ -23,7 +23,7 @@ test:
     - infrav3-plain
 
 dev:docker:
-  image: ${REGISTRY_URL}/factory-ci-runner:build-package
+  image: ${REGISTRY_URL}/factory-ci-runner:factory-ci
   stage: build
   script:
     - make -C .docker build deliver

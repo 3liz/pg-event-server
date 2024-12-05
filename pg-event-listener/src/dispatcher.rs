@@ -3,10 +3,7 @@
 //!
 use futures::{stream, StreamExt};
 use tokio::sync::mpsc;
-use tokio_postgres::{
-    error::DbError, AsyncMessage, Client, Socket,
-    tls::{MakeTlsConnect, TlsConnect},    
-};
+use tokio_postgres::{error::DbError, tls::MakeTlsConnect, AsyncMessage, Client, Socket};
 
 use crate::{Config, Error, Notification, Result};
 use std::collections::HashSet;
@@ -28,19 +25,12 @@ pub struct PgEventDispatcher {
 
 impl PgEventDispatcher {
     /// Initialize a `PgEventDispatcher`
-    pub async fn connect<T>(
-        config: Config, 
-        tx: mpsc::Sender<Notification>,
-        tls: T, 
-    ) -> Result<Self> 
+    pub async fn connect<T>(config: Config, tx: mpsc::Sender<Notification>, tls: T) -> Result<Self>
     where
         T: MakeTlsConnect<Socket> + Clone + Sync + Send + 'static,
         T::Stream: Sync + Send,
-        T::TlsConnect: Sync + Send,
-        <T::TlsConnect as TlsConnect<Socket>>::Future: Send,
     {
         let (client, mut conn) = config.connect(tls).await?;
-
         let sender = tx.clone();
 
         // Send the connection in its own task
@@ -79,6 +69,7 @@ impl PgEventDispatcher {
         });
 
         let session_pid = Self::get_session_pid(&client).await?;
+        log::debug!("Created PG connection with pid {}", session_pid);
 
         Ok(Self {
             client,
@@ -114,11 +105,10 @@ impl PgEventDispatcher {
     {
         let mut query: String = "".into();
         // Build a batch query
-        self.events.extend(events.into_iter().map(|s| {
+        self.events.extend(events.into_iter().inspect(|s| {
             query += "LISTEN ";
-            query += &s;
+            query += s;
             query += ";";
-            s
         }));
         if !query.is_empty() {
             self.client.batch_execute(&query).await.map_err(Error::from)
@@ -128,13 +118,10 @@ impl PgEventDispatcher {
     }
 
     /// Reconnect listener with its config
-    pub async fn respawn<T>(&mut self, tls: T) -> Result<()> 
+    pub async fn respawn<T>(&mut self, tls: T) -> Result<()>
     where
         T: MakeTlsConnect<Socket> + Clone + Sync + Send + 'static,
         T::Stream: Sync + Send,
-        T::TlsConnect: Sync + Send,
-        <T::TlsConnect as TlsConnect<Socket>>::Future: Send,
-
     {
         let config = self.config.clone();
         let events = self.events.drain().collect::<Vec<_>>();

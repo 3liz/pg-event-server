@@ -112,9 +112,17 @@ impl EventDispatch {
     /// `buffer` is the channel buffer size:
     /// see [`tokio::sync::mpsc::channel`]
     pub async fn connect(settings: &Settings) -> Result<Self> {
+        log::debug!("Initializing event dispatcher");
         let (tx, rx) = mpsc::channel(settings.events_buffer_size);
         let reconnect_delay = settings.reconnect_delay;
-        let mut pool = Pool::new(tx, settings.postgres_tls.make_tls_connect()?);
+        let mut pool = Pool::new(
+            tx,
+            settings
+                .postgres_tls
+                .as_ref()
+                .map(|tls| tls.make_tls_connect())
+                .transpose()?,
+        );
 
         let mut channels = Vec::<Channel>::with_capacity(settings.channels.len());
         for conf in settings.channels.iter() {

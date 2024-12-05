@@ -3,7 +3,7 @@
 //! and a subset of psql environment variables.
 //!
 //! *Note*: tokio-postgres 0.7.9 [introduced a change](https://github.com/3liz/pg-event-server/issues/1)
-//! preventing `PGUSER` and service configuration to set connection user. 
+//! preventing `PGUSER` and service configuration to set connection user.
 //! The [release of tokio-postgres 0.7.10](https://github.com/sfackler/rust-postgres/blob/master/tokio-postgres/CHANGELOG.md#v0710---2023-08-25)
 //! fix this issue.
 //!
@@ -21,7 +21,7 @@
 //! * `PGCONNECT_TIMEOUT` - behaves the same as the `connect_timeout` connection parameter.
 //! * `PGPASSFILE` - Specifies the name of the file used to store password.
 //!
-//! ## Passfile support 
+//! ## Passfile support
 //!
 //! Passfile is actually supported only on linux platform
 //!

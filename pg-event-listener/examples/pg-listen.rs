@@ -2,7 +2,7 @@
 //! Listen for pg event
 //!
 use pg_client_config::{load_config, Result};
-use pg_event_listener::{PgEventListener, NoTls};
+use pg_event_listener::{NoTls, PgEventListener};
 
 use clap::{ArgAction, Parser};
 

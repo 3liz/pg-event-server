@@ -118,7 +118,7 @@ pub struct Settings {
     pub reconnect_delay: u16,
 
     /// Postgres tls configuration
-    pub postgres_tls: PgTlsConfig,
+    pub postgres_tls: Option<PgTlsConfig>,
 }
 
 impl Settings {
@@ -128,7 +128,11 @@ impl Settings {
     }
 
     pub fn check(&self) -> Result<()> {
-        self.postgres_tls.check()
+        if let Some(conf) = &self.postgres_tls {
+            conf.check()
+        } else {
+            Ok(())
+        }
     }
 }
 
