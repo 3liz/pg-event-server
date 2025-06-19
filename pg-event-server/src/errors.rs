@@ -7,12 +7,14 @@
 pub enum Error {
     #[error("IO Error")]
     IO(#[from] std::io::Error),
-    #[error("Invalid configuration file")]
-    ConfigFormat(#[from] toml::de::Error),
     #[error("SystemTime error")]
     SystemTime(#[from] std::time::SystemTimeError),
-    #[error("Config error")]
+    #[error("Config error: {0}")]
     Config(String),
+    #[error("Config error")]
+    ConfigError(#[from] config::ConfigError),
+    #[error("Invalid configuration file")]
+    ConfigFormat(#[from] toml::de::Error),
     #[error("Postgres connection error")]
     PostgresConnection(#[from] pg_client_config::Error),
     #[error("Postgres error")]

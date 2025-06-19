@@ -58,8 +58,8 @@ use tokio::sync::watch::{self, Receiver, Sender};
 //
 // Event dispatcher
 //
-async fn start_event_dispatcher(tx: Sender<Event>, conf: config::Config) -> Result<()> {
-    let dispatcher = EventDispatch::connect(&conf.settings).await?;
+async fn start_event_dispatcher(tx: Sender<Event>, settings: &config::Settings) -> Result<()> {
+    let dispatcher = EventDispatch::connect(settings).await?;
     // Start dispatching
     actix_web::rt::spawn(async move {
         dispatcher
@@ -101,14 +101,12 @@ async fn main() -> Result<()> {
 
     init_logger(args.verbose);
 
-    let conf = config::read_config(Path::new(&args.conf))?;
+    let settings = config::read_config(Path::new(&args.conf))?;
 
     if args.check {
         println!("Configuration looks ok.");
         return Ok(());
     }
-
-    let settings = &conf.settings;
 
     let title = settings.server.title.clone();
     let bind_address = settings.server.listen.clone();
@@ -128,7 +126,7 @@ async fn main() -> Result<()> {
     let (tx, rx) = watch::channel(Event::default());
 
     log::info!("Starting Event dispatcher");
-    start_event_dispatcher(tx, conf).await?;
+    start_event_dispatcher(tx, &settings).await?;
 
     let server = HttpServer::new(move || {
         let broadcaster = Rc::new(Broadcaster::new(worker_buffer_size, channels.clone()));

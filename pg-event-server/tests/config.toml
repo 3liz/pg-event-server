@@ -1,6 +1,6 @@
 [server]
 # Title that will appear in the 'Server' header
-title = "Pg event test server"
+#title = "Pg event test server"
 listen = "127.0.0.1:8888"
 
 ssl_enabled = true

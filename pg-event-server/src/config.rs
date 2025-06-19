@@ -17,6 +17,11 @@ use std::path::{Path, PathBuf};
 use crate::errors::{Error, Result};
 use crate::postgres::tls::PgTlsConfig;
 
+use config::{
+    Config, Environment, FileFormat,
+    builder::{ConfigBuilder, DefaultState},
+};
+
 fn default_title() -> String {
     const VERSION: &str = env!("CARGO_PKG_VERSION");
     format!("Pg event server v{VERSION}")
@@ -76,7 +81,7 @@ impl Server {
         }
     }
 
-    fn sanitize(&mut self, root: &Path) -> Result<()> {
+    fn sanitize(&mut self, root: &Path) {
         if let Some(workers) = self.num_workers {
             if workers == 0 {
                 self.num_workers = None;
@@ -92,9 +97,44 @@ impl Server {
                 self.ssl_cert_file = Some(root.join(ssl_cert));
             }
         }
-        Ok(())
     }
 }
+
+
+///
+/// Subscription channel configuration
+///
+#[derive(Debug, Clone, Deserialize)]
+pub struct ChannelConfig {
+    /// Id to channel
+    /// Used in subscription request
+    pub id: String,
+    /// List of events allowed to subscribe to
+    /// If no events are defined then *all* events
+    /// are allowed.
+    #[serde(default)]
+    pub allowed_events: Vec<String>,
+    /// Connection string
+    pub connection_string: Option<String>,
+}
+
+impl ChannelConfig {
+    fn sanitize(&mut self) {
+        self.id = self.id.trim_start_matches('/').into();
+    }
+}
+
+///
+/// Channel set config for drop in config files
+///
+#[derive(Debug, Clone, Deserialize)]
+pub struct ChannelSetConfig {
+    /// List of channel configuration in this
+    /// channel set
+    #[serde(default, rename(deserialize = "channel"))]
+    pub channels: Vec<ChannelConfig>,
+}
+
 
 ///
 /// General Configuration
@@ -122,13 +162,14 @@ pub struct Settings {
     pub postgres_tls: Option<PgTlsConfig>,
 }
 
+
 impl Settings {
-    fn sanitize(&mut self, root: &Path) -> Result<()> {
-        self.channels.iter_mut().try_for_each(|c| c.sanitize())?;
-        self.server.sanitize(root)
+    fn sanitize(&mut self, root: &Path) {
+        self.channels.iter_mut().for_each(|c| c.sanitize());
+        self.server.sanitize(root);
     }
 
-    fn validate(&self) -> Result<()> {
+    fn validate(self) -> Result<Self> {
         // Check for duplicated channel id
         let mut idents = HashSet::<&str>::new();
         self.channels.iter().try_for_each(|c| {
@@ -138,65 +179,53 @@ impl Settings {
                 Ok(())
             }
         })?;
+
         if let Some(conf) = &self.postgres_tls {
-            conf.validate()
-        } else {
-            Ok(())
+            conf.validate()?;
         }
+
+        Ok(self)
     }
 }
 
-///
-/// Subscription channel configuration
-///
-#[derive(Debug, Clone, Deserialize)]
-pub struct ChannelConfig {
-    /// Id to channel
-    /// Used in subscription request
-    pub id: String,
-    /// List of events allowed to subscribe to
-    /// If no events are defined then *all* events
-    /// are allowed.
-    #[serde(default)]
-    pub allowed_events: Vec<String>,
-    /// Connection string
-    pub connection_string: Option<String>,
-}
+impl Settings {
 
-impl ChannelConfig {
-    fn sanitize(&mut self) -> Result<()> {
-        self.id = self.id.trim_start_matches('/').into();
-        Ok(())
+    /// Configure so environment will be as CONF_KEY__VALUE
+    fn builder() -> ConfigBuilder<DefaultState> {
+        Config::builder().add_source(
+            Environment::with_prefix("conf")
+                .prefix_separator("_")
+                .separator("__")
+                .ignore_empty(true)
+        )
     }
-}
 
-///
-/// Channel set config
-///
-#[derive(Debug, Clone, Deserialize)]
-pub struct ChannelSetConfig {
-    /// List of channel configuration in this
-    /// channel set
-    #[serde(default, rename(deserialize = "channel"))]
-    pub channels: Vec<ChannelConfig>,
-}
+    fn build(settings: ConfigBuilder<DefaultState>, root: &Path) -> Result<Self> {
+        settings
+            .build()?
+            .try_deserialize()
+            .map_err(|err| Error::Config(format!("{}", err)))
+            .and_then(|mut this: Self| {
+                this.sanitize(root);
+                this.validate()
+            })
+    }
 
-#[derive(Debug, Clone)]
-pub struct Config {
-    /// Configuration settings
-    pub settings: Settings,
-}
-
-impl Config {
-    /// Read configuration from `path`
+    /// Load configuration from file
     ///
     /// Will read channel configurations in a directory
     /// located in the same directory as the configuration file.
-    pub fn read(path: &Path) -> Result<Self> {
-        let mut settings: Settings = toml::from_str(&fs::read_to_string(path)?)?;
-
+    pub fn from_file(path: &Path) -> Result<Self> {
         let root = path.parent().unwrap_or(Path::new("./"));
+        
+        Self::build(
+            Self::builder().add_source(config::File::from(path).format(FileFormat::Toml)),
+            root,
+        ).and_then(|this| this.read_channel_configs(path, root))
+    }
 
+    // Read "drop in" configurations
+    fn read_channel_configs(mut self, path: &Path, root: &Path) -> Result<Self> {
         // Read all channel sets
         if let Some(stem) = path.file_stem().map(Path::new) {
             let confdir = root.join(stem.with_extension("d"));
@@ -212,7 +241,7 @@ impl Config {
                             log::info!("Loading channels configuration: {}", path.display());
                             let mut chanset: ChannelSetConfig =
                                 toml::from_str(&fs::read_to_string(path)?)?;
-                            settings.channels.append(&mut chanset.channels);
+                            self.channels.append(&mut chanset.channels);
                         }
                         Err(err) => {
                             log::error!("Failed to read config file path: {err:?}");
@@ -221,15 +250,13 @@ impl Config {
                 }
             }
         }
-        settings.sanitize(root)?;
-        settings.validate()?;
-        Ok(Config { settings })
+        Ok(self)
     }
 }
 
 // Shortcut
-pub fn read_config(path: &Path) -> Result<Config> {
-    Config::read(path)
+pub fn read_config(path: &Path) -> Result<Settings> {
+    Settings::from_file(path)
 }
 
 #[cfg(test)]
@@ -241,12 +268,15 @@ mod tests {
     #[test]
     fn load_configuration() {
         setup();
-        let conf = Config::read(confdir!("config.toml")).unwrap();
 
-        assert_eq!(conf.settings.server.title, "Pg event test server");
-        assert_eq!(conf.settings.channels.len(), 2);
+        unsafe { std::env::set_var("CONF_SERVER__TITLE", "My Title"); }
 
-        let chan0 = &conf.settings.channels[0];
+        let settings = Settings::from_file(confdir!("config.toml")).unwrap();
+
+        assert_eq!(settings.server.title, "My Title");
+        assert_eq!(settings.channels.len(), 2);
+
+        let chan0 = &settings.channels[0];
         assert_eq!(chan0.allowed_events, ["foo", "bar", "baz"]);
     }
 }
