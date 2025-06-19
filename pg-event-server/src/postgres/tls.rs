@@ -101,7 +101,7 @@ impl PgTlsConfig {
         Ok(MakeRustlsConnect::new(builder))
     }
 
-    pub fn check(&self) -> Result<()> {
+    pub fn validate(&self) -> Result<()> {
         if let Some(cafile) = &self.tls_ca_file {
             if !cafile.as_path().is_file() {
                 return Err(Error::Config(format!(

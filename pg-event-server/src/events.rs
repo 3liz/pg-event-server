@@ -127,8 +127,6 @@ impl EventDispatch {
         let mut channels = Vec::<Channel>::with_capacity(settings.channels.len());
         for conf in settings.channels.iter() {
             // Create postgres configuration
-            // TODO Make sure that a channel with the same id does not already
-            // exists.
             let dispatch = pool.add_connection(conf).await?;
             channels.push(Channel::new(dispatch, conf.clone()));
         }

@@ -35,7 +35,7 @@ fn match_host(value: &str, config: &Config) -> Result<bool> {
 fn match_port(value: &str, config: &Config) -> Result<bool> {
     Ok(value == "*" || {
         let port: u16 = value.parse().map_err(|_| Error::PassfileParseError)?;
-        config.get_ports().iter().any(|p| *p == port)
+        config.get_ports().contains(&port)
     })
 }
 

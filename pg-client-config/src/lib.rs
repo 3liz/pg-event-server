@@ -130,7 +130,7 @@ pub fn load_config(config: Option<&str>) -> Result<Config> {
         let cnxstr = cnxstr.trim_start();
         if cnxstr.starts_with("service=") {
             // Get the service name
-            // Assume the the tail is valid connection string
+            // Assume the tail is valid connection string
             if let Some((service, tail)) = cnxstr.split_once('=').map(|(_, tail)| {
                 tail.split_once(|c: char| c.is_whitespace())
                     .unwrap_or((tail, ""))

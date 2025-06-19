@@ -86,7 +86,6 @@ impl PgEventDispatcher {
             .batch_execute(&format!("LISTEN {channel};"))
             .await
             .map(|_| self.events.insert(channel.into()))
-            .map_err(Error::from)
     }
 
     /// Unlisten the specified channel
@@ -95,7 +94,6 @@ impl PgEventDispatcher {
             .batch_execute(&format!("UNLISTEN {channel};"))
             .await
             .map(|_| self.events.remove(channel))
-            .map_err(Error::from)
     }
 
     /// Listen for multiple events
@@ -111,7 +109,7 @@ impl PgEventDispatcher {
             query += ";";
         }));
         if !query.is_empty() {
-            self.client.batch_execute(&query).await.map_err(Error::from)
+            self.client.batch_execute(&query).await
         } else {
             Ok(())
         }

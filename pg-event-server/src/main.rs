@@ -18,8 +18,8 @@ mod events;
 mod landingpage;
 mod pool;
 mod postgres;
-mod server;
 mod subscribe;
+mod tls;
 mod utils;
 
 use subscribe::Broadcaster;
@@ -104,9 +104,8 @@ async fn main() -> Result<()> {
     let conf = config::read_config(Path::new(&args.conf))?;
 
     if args.check {
-        return conf.check().map(|_| {
-            println!("Configuration looks ok.");
-        });
+        println!("Configuration looks ok.");
+        return Ok(());
     }
 
     let settings = &conf.settings;

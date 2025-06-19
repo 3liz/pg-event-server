@@ -10,6 +10,7 @@
 //! * `listen` - The socket addresses to listen to (as `"ip:port"` strings)
 //!
 use serde::Deserialize;
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -64,7 +65,7 @@ pub struct Server {
 }
 
 // Handle SSL configuration
-use crate::server::tls::{make_tls_config, TlsServerConfig};
+use crate::tls::{make_tls_config, TlsServerConfig};
 
 impl Server {
     pub fn make_tls_config(&self) -> Result<Option<TlsServerConfig>> {
@@ -123,13 +124,22 @@ pub struct Settings {
 
 impl Settings {
     fn sanitize(&mut self, root: &Path) -> Result<()> {
-        self.channels.iter_mut().for_each(|c| c.sanitize());
+        self.channels.iter_mut().try_for_each(|c| c.sanitize())?;
         self.server.sanitize(root)
     }
 
-    pub fn check(&self) -> Result<()> {
+    fn validate(&self) -> Result<()> {
+        // Check for duplicated channel id
+        let mut idents = HashSet::<&str>::new();
+        self.channels.iter().try_for_each(|c| {
+            if !idents.insert(&c.id) {
+                Err(Error::Config(format!("Duplicated channel id: '{}'", c.id)))
+            } else {
+                Ok(())
+            }
+        })?;
         if let Some(conf) = &self.postgres_tls {
-            conf.check()
+            conf.validate()
         } else {
             Ok(())
         }
@@ -154,8 +164,9 @@ pub struct ChannelConfig {
 }
 
 impl ChannelConfig {
-    pub fn sanitize(&mut self) {
+    fn sanitize(&mut self) -> Result<()> {
         self.id = self.id.trim_start_matches('/').into();
+        Ok(())
     }
 }
 
@@ -211,11 +222,8 @@ impl Config {
             }
         }
         settings.sanitize(root)?;
+        settings.validate()?;
         Ok(Config { settings })
-    }
-
-    pub fn check(&self) -> Result<()> {
-        self.settings.check()
     }
 }
 

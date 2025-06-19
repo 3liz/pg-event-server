@@ -1,5 +1,5 @@
 //!
-//! Rust ls server configuration
+//! Rust tls server configuration
 //!
 use crate::config::Server;
 use crate::errors::{Error, Result};
