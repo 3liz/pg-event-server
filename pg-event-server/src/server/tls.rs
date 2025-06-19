@@ -23,10 +23,10 @@ pub fn make_tls_config(config: &Server) -> Result<TlsServerConfig> {
 
     log::debug!("Loading SSL cert file at {cert_path:?}");
     let cert_chain = CertificateDer::pem_file_iter(cert_path)
-        .map_err(|err| Error::ServerTls(format!("Failed to open client certificate: {err:?}")))?
+        .map_err(|err| Error::ServerTls(format!("Failed to open server certificate: {err:?}")))?
         .map(|cert| {
             cert.map_err(|err| {
-                Error::ServerTls(format!("Failed to read client certificate: {err:?}"))
+                Error::ServerTls(format!("Failed to read server certificate: {err:?}"))
             })
         })
         .collect::<Result<Vec<CertificateDer>, _>>()?;
