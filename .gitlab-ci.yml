@@ -1,28 +1,8 @@
 stages:
-- test
 - build
 - release
 
-variables:
-  CARGO_HOME: $CI_PROJECT_DIR/.cargo
-
-cache:
-  paths:
-    - $CI_PROJECT_DIR/.cargo
-
-test:
-  stage: test
-  image: ${REGISTRY_URL}/factory-ci-runner:rust-bullseye
-  script:
-    - cp pg-client-config/fixtures/passfile.conf.in pg-client-config/fixtures/passfile.conf
-    - chmod 0600 pg-client-config/fixtures/passfile.conf
-    - cargo test
-  environment:
-    name: snap
-  tags:
-    - infrav3-plain
-
-dev:docker:
+build:
   image: ${REGISTRY_URL}/factory-ci-runner:factory-ci
   stage: build
   script:
@@ -33,13 +13,15 @@ dev:docker:
     refs:
       - tags
       - main
+  artifacts:
+    paths:
+      - ".docker/factory.manifest"
   tags:
     - infrav3-dind
 
-release:docker:
+release:
   stage: release
   script: 
-    - make -C .docker build deliver
     - release-image pg-event-server
   environment:
     name: production
@@ -54,18 +36,3 @@ release:docker:
     - infrav3-dind
   variables:
     FACTORY_MANIFEST: ".docker/factory.manifest"
-
-package:deb:
-  stage: release
-  image: ${REGISTRY_URL}/factory-ci-runner:rust-bullseye
-  script:
-    - cargo deb -p pg-event-server
-    - cp -v target/debian/*.deb /srv/storage/debs/
-  environment:
-    name: snap
-  only:
-    refs:
-      - tags
-  tags:
-    - infrav3-plain
-
